@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(realsense2_camera)
+add_compile_options(-std=c++11)
 
 option(BUILD_WITH_OPENMP "Use OpenMP" OFF)
 option(SET_USER_BREAK_AT_STARTUP "Set user wait point in startup (for debug)" OFF)
@@ -13,7 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
     cv_bridge
     image_transport
     tf
-    dynamic_reconfigure
+    ddynamic_reconfigure
     diagnostic_updater
     )
 
@@ -32,7 +33,7 @@ if(SET_USER_BREAK_AT_STARTUP)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBPDEBUG")
 endif()
 
-find_package(realsense2)
+find_package(realsense2 2.17.1 REQUIRED)
 if(NOT realsense2_FOUND)
     message(FATAL_ERROR "\n\n Intel RealSense SDK 2.0 is missing, please install it from https://github.com/IntelRealSense/librealsense/releases\n\n")
 endif()
@@ -64,14 +65,6 @@ include_directories(
     ${realsense_INCLUDE_DIR}
     )
 
-# Generate dynamic reconfigure options from .cfg files
-generate_dynamic_reconfigure_options(
-  cfg/base_d400_params.cfg
-  cfg/sr300_params.cfg
-  cfg/rs415_params.cfg
-  cfg/rs435_params.cfg
-)
-
 # RealSense ROS Node
 catkin_package(
     LIBRARIES ${PROJECT_NAME}
@@ -79,21 +72,15 @@ catkin_package(
     nodelet
     cv_bridge
     image_transport
-    dynamic_reconfigure
+    ddynamic_reconfigure
     )
 
 add_library(${PROJECT_NAME}
     include/constants.h
     include/realsense_node_factory.h
     include/base_realsense_node.h
-    include/rs415_node.h
-    include/rs435_node.h
-    include/sr300_node.h
     src/realsense_node_factory.cpp
     src/base_realsense_node.cpp
-    src/rs415_node.cpp
-    src/rs435_node.cpp
-    src/sr300_node.cpp
     )
 
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_generate_messages_cpp)

@@ -39,6 +39,7 @@ Processing enabled by this node:
 
 <launch>
   <arg name="camera"              default="camera"/>
+  <arg name="tf_prefix"           default="$(arg camera)"/>
   <arg name="manager"             default="realsense2_camera_manager"/>
 
   <!-- Camera device specific arguments -->
@@ -71,8 +72,8 @@ Processing enabled by this node:
   <arg name="infra1_fps"          default="30"/>
   <arg name="infra2_fps"          default="30"/>
   <arg name="color_fps"           default="30"/>
-  <arg name="gyro_fps"            default="1000"/>
-  <arg name="accel_fps"           default="1000"/>
+  <arg name="gyro_fps"            default="400"/>
+  <arg name="accel_fps"           default="250"/>
   <arg name="enable_imu"          default="true"/>
 
   <arg name="enable_pointcloud"   default="false"/>
@@ -112,6 +113,7 @@ Processing enabled by this node:
     <!-- Launch the camera device nodelet-->
     <include file="$(find realsense2_camera)/launch/includes/nodelet.launch.xml">
       <arg name="manager"                  value="$(arg manager)"/>
+      <arg name="tf_prefix"                value="$(arg tf_prefix)"/>
       <arg name="serial_no"                value="$(arg serial_no)"/>
       <arg name="json_file_path"           value="$(arg json_file_path)"/>
 

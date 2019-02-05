@@ -3,3 +3,6 @@
 *.bag
 *.pyc
 *.ini
+.idea/
+.vs/
+*.json

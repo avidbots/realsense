@@ -26,7 +26,6 @@
 #include <eigen3/Eigen/Geometry>
 #include <fstream>
 
-
 namespace realsense2_camera
 {
     const stream_index_pair COLOR{RS2_STREAM_COLOR, 0};
@@ -43,18 +42,11 @@ namespace realsense2_camera
 
     const std::vector<std::vector<stream_index_pair>> HID_STREAMS = {{GYRO, ACCEL}};
 
-    inline void signalHandler(int signum)
-    {
-        ROS_INFO_STREAM(strsignal(signum) << " Signal is received! Terminating RealSense Node...");
-        ros::shutdown();
-        exit(signum);
-    }
-
     class InterfaceRealSenseNode
     {
     public:
         virtual void publishTopics() = 0;
-        virtual void registerDynamicReconfigCb() = 0;
+        virtual void registerDynamicReconfigCb(ros::NodeHandle& nh) = 0;
         virtual ~InterfaceRealSenseNode() = default;
     };
 
@@ -65,12 +57,12 @@ namespace realsense2_camera
         virtual ~RealSenseNodeFactory() {}
 
     private:
+        static void signalHandler(int signum);
         rs2::device getDevice(std::string& serial_no);
         virtual void onInit() override;
         void tryGetLogSeverity(rs2_log_severity& severity) const;
 
         std::unique_ptr<InterfaceRealSenseNode> _realSenseNode;
-        rs2::device _device;
         rs2::context _ctx;
     };
 }//end namespace

@@ -3,7 +3,7 @@
   <arg name="json_file_path"    default=""/>
   <arg name="camera"            default="camera"/>
   <arg name="rosbag_filename"   default=""/>
-  
+
   <arg name="fisheye_width"       default="0"/>
   <arg name="fisheye_height"      default="0"/>
   <arg name="enable_fisheye"      default="true"/>
@@ -29,14 +29,16 @@
   <arg name="infra1_fps"          default="0"/>
   <arg name="infra2_fps"          default="0"/>
   <arg name="color_fps"           default="0"/>
-  <arg name="gyro_fps"            default="1000"/>
-  <arg name="accel_fps"           default="1000"/>
+  <arg name="gyro_fps"            default="400"/>
+  <arg name="accel_fps"           default="250"/>
   <arg name="enable_imu"          default="true"/>
 
   <arg name="enable_pointcloud"   default="false"/>
   <arg name="enable_sync"         default="false"/>
 
   <arg name="align_depth"         default="false"/>
+  <arg name="filters"             default=""/>
+
 
   <group ns="$(arg camera)">
     <include file="$(find realsense2_camera)/launch/includes/nodelet.launch.xml">
@@ -76,6 +78,7 @@
       <arg name="gyro_fps"                 value="$(arg gyro_fps)"/>
       <arg name="accel_fps"                value="$(arg accel_fps)"/>
       <arg name="enable_imu"               value="$(arg enable_imu)"/>
+      <arg name="filters"                  value="$(arg filters)"/>
     </include>
   </group>
 </launch>
