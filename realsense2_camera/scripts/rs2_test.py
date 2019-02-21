@@ -171,7 +171,7 @@ def run_tests(tests):
         themes = [test_types[test['type']]['listener_theme'] for test in rec_tests]
         msg_retriever = CWaitForMessage(msg_params)
         print 'Starting ROS'
-        p_wrapper = subprocess.Popen(['roslaunch', 'realsense2_camera', 'rs_from_file.launch'] + params_str.split(' '), stdout=None, stderr=None)
+        p_wrapper = subprocess.Popen(['roslaunch', 'realsense2_camera_alternate_1', 'rs_from_file.launch'] + params_str.split(' '), stdout=None, stderr=None)
         listener_res = msg_retriever.wait_for_messages(themes)
         print 'Killing ROS'
         p_wrapper.terminate()

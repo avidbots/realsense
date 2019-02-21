@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(realsense2_camera)
+project(realsense2_camera_alternate_1)
 add_compile_options(-std=c++11)
 
 option(BUILD_WITH_OPENMP "Use OpenMP" OFF)
@@ -37,6 +37,8 @@ find_package(realsense2 2.17.1 REQUIRED)
 if(NOT realsense2_FOUND)
     message(FATAL_ERROR "\n\n Intel RealSense SDK 2.0 is missing, please install it from https://github.com/IntelRealSense/librealsense/releases\n\n")
 endif()
+
+find_package(Threads)
 
 if (CMAKE_BUILD_TYPE EQUAL "RELEASE")
     message(STATUS "Create Release Build.")

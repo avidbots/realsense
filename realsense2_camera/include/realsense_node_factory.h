@@ -17,11 +17,11 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud2_iterator.h>
 #include <constants.h>
-#include <realsense2_camera/Extrinsics.h>
+#include <realsense2_camera_alternate_1/Extrinsics.h>
 #include <tf/transform_broadcaster.h>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <sensor_msgs/Imu.h>
-#include <realsense2_camera/IMUInfo.h>
+#include <realsense2_camera_alternate_1/IMUInfo.h>
 #include <csignal>
 #include <eigen3/Eigen/Geometry>
 #include <fstream>
