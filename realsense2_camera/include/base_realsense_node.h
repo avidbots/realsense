@@ -8,7 +8,7 @@
 #include <realsense2_camera/base_d400_paramsConfig.h>
 #include <realsense2_camera/rs415_paramsConfig.h>
 #include <realsense2_camera/rs435_paramsConfig.h>
-
+#include <realsense2_camera/JsonConfig.h>
 #include <std_srvs/SetBool.h>
 #include <diagnostic_updater/diagnostic_updater.h>
 #include <diagnostic_updater/update_functions.h>
@@ -121,6 +121,7 @@ namespace realsense2_camera
         static std::string getNamespaceStr();
         void getParameters();
         bool enableStreams(std_srvs::SetBool::Request  &req, std_srvs::SetBool::Response &res);
+        bool JsonConfigCallback(JsonConfig::RequestType &request, realsense2_camera::JsonConfig::ResponseType &response);
         void setupDevice();
         void setupPublishers();
         void setupServices();
@@ -202,6 +203,7 @@ namespace realsense2_camera
         ros::Publisher _pointcloud_xyz_publisher;
         ros::Publisher _pointcloud_xyzrgb_publisher;
         ros::ServiceServer _enable_streams_service;
+        ros::ServiceServer _json_config_service;
         ros::Time _ros_time_base;
         bool _align_depth;
         bool _sync_frames;

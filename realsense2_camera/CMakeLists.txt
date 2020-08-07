@@ -52,6 +52,11 @@ add_message_files(
     Extrinsics.msg
     )
 
+add_service_files(
+    FILES
+    JsonConfig.srv
+)
+
 generate_messages(
     DEPENDENCIES
     sensor_msgs
