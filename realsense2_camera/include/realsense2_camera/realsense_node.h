@@ -20,6 +20,7 @@
 #include <realsense2_camera/Extrinsics.h>
 #include <realsense2_camera/IMUInfo.h>
 #include <realsense2_camera/realsense_node.h>
+#include <realsense2_camera/JsonConfig.h>
 
 #include <ros/ros.h>
 #include <ros/package.h>
@@ -151,6 +152,7 @@ class RealSenseParamManager;
         static std::string getNamespaceStr();
         void getParameters();
         bool enableStreams(std_srvs::SetBool::Request  &req, std_srvs::SetBool::Response &res);
+        bool JsonConfigCallback(JsonConfig::RequestType &request, realsense2_camera::JsonConfig::ResponseType &response);
         void setupDevice();
         void setupPublishers();
         void setupServices();
@@ -235,6 +237,7 @@ class RealSenseParamManager;
         ros::Publisher _pointcloud_xyz_publisher;
         ros::Publisher _pointcloud_xyzrgb_publisher;
         ros::ServiceServer _enable_streams_service;
+        ros::ServiceServer _json_config_service;
         ros::Time _ros_time_base;
         bool _align_depth;
         bool _sync_frames;

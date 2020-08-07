@@ -1,0 +1,6 @@
+# The Json configuraiton string, containing entries for the values that are to be modified.
+# note that the current configuration can be obtained (without modifications) by passing the empty string.
+string json_string
+---
+# The new whole configuration of the realsense camera.
+string new_config
