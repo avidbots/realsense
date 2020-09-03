@@ -132,6 +132,11 @@ install(DIRECTORY launch/
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
     )
 
+# Install scripts
+install(DIRECTORY scripts/
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/scripts
+    )
+
 # Install rviz files
 install(DIRECTORY rviz/
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/rviz
