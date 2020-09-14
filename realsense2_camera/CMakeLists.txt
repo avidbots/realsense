@@ -83,17 +83,9 @@ catkin_package(
     )
 
 add_library(${PROJECT_NAME}
-    include/constants.h
-    include/realsense_node_factory.h
-    include/base_realsense_node.h
-    include/rs415_node.h
-    include/rs435_node.h
-    include/sr300_node.h
-    src/realsense_node_factory.cpp
-    src/base_realsense_node.cpp
-    src/rs415_node.cpp
-    src/rs435_node.cpp
-    src/sr300_node.cpp
+    src/realsense_nodelet.cpp
+    src/realsense_node.cpp
+    src/param_manager.cpp
     )
 
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_generate_messages_cpp)
@@ -118,9 +110,9 @@ install(TARGETS ${PROJECT_NAME}
     )
 
 # Install header files
-install(DIRECTORY include/
-    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-    )
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
 
 # Install launch files
 install(DIRECTORY launch/
@@ -136,3 +128,4 @@ install(DIRECTORY rviz/
 install(FILES nodelet_plugins.xml
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
     )
+include(qt.cmake)

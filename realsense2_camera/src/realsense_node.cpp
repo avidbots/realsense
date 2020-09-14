@@ -1,25 +1,36 @@
-#include "../include/base_realsense_node.h"
-#include "../include/sr300_node.h"
+﻿#include <realsense2_camera/realsense_node.h>
+#include <realsense2_camera/param_manager.h>
+#include <boost/interprocess/sync/named_mutex.hpp>
 
 using namespace realsense2_camera;
 
-std::string BaseRealSenseNode::getNamespaceStr()
+constexpr stream_index_pair RealSenseNode::COLOR;
+constexpr stream_index_pair RealSenseNode::DEPTH;
+constexpr stream_index_pair RealSenseNode::INFRA1;
+constexpr stream_index_pair RealSenseNode::INFRA2;
+constexpr stream_index_pair RealSenseNode::FISHEYE;
+constexpr stream_index_pair RealSenseNode::GYRO;
+constexpr stream_index_pair RealSenseNode::ACCEL;
+
+std::string RealSenseNode::getNamespaceStr()
 {
     auto ns = ros::this_node::getNamespace();
     ns.erase(std::remove(ns.begin(), ns.end(), '/'), ns.end());
     return ns;
 }
 
-BaseRealSenseNode::BaseRealSenseNode(ros::NodeHandle& nodeHandle,
-                                     ros::NodeHandle& privateNodeHandle,
-                                     rs2::device dev,
-                                     const std::string& serial_no) :
-    _dev(dev),  _node_handle(nodeHandle),
-    _pnh(privateNodeHandle), _json_file_path(""),
-    _serial_no(serial_no), _base_frame_id(""),
+RealSenseNode::RealSenseNode(const ros::NodeHandle &nodeHandle,
+                                     const ros::NodeHandle &privateNodeHandle) :
+    _node_handle(nodeHandle),
+    _pnh(privateNodeHandle),
+    _json_file_path(""),
+    _base_frame_id(""),
     _intialize_time_base(false),
     _namespace(getNamespaceStr())
 {
+     getParameters();
+     getDevice();
+
     // Types for depth stream
     _is_frame_arrived[DEPTH] = false;
     _format[DEPTH] = RS2_FORMAT_Z16;   // libRS type
@@ -93,25 +104,119 @@ BaseRealSenseNode::BaseRealSenseNode(ros::NodeHandle& nodeHandle,
     filters[3].is_enabled = false;
 
     _prev_camera_time_stamp = 0;
+
+    setHealthTimers();
+
+    if (_dev)
+    {
+      createParamsManager();
+      publishTopics();
+    }
 }
 
-void BaseRealSenseNode::publishTopics()
+void RealSenseNode::createParamsManager() {
+    auto pid_str = _dev.get_info(RS2_CAMERA_INFO_PRODUCT_ID);
+    uint16_t pid;
+    std::stringstream ss;
+    ss << std::hex << pid_str;
+    ss >> pid;
+    try
+    {
+      _params = param_makers.at(pid)();
+    }
+    catch (...)
+    {
+       ROS_FATAL_STREAM("Unsupported device!" << " Product ID: 0x" << pid_str);
+       ros::Duration(20).sleep();
+       resetNode();
+    }
+}
+
+void RealSenseNode::resetNode() {
+    auto nh = _node_handle;
+    auto pnh = _pnh;
+    this->~RealSenseNode();
+    new (this) RealSenseNode(nh, pnh);
+}
+
+void RealSenseNode::getDevice() {
+
+    if (!_rosbag_filename.empty())
+    {
+        ROS_INFO_STREAM("publish topics from rosbag file: " << _rosbag_filename.c_str());
+        auto pipe = std::make_shared<rs2::pipeline>();
+        rs2::config cfg;
+        cfg.enable_device_from_file(_rosbag_filename.c_str(), false);
+        cfg.enable_all_streams();
+        pipe->start(cfg); //File will be opened in read mode at this point
+        auto _device = pipe->get_active_profile().get_device();
+        //_realSenseNode = std::unique_ptr<BaseRealSenseNode>(new BaseRealSenseNode(nh, privateNh, _device, serial_no));
+    }
+    else
+    {
+        namespace bi = boost::interprocess;
+        bi::named_mutex usb_mutex{bi::open_or_create, "usb_mutex"};
+        usb_mutex.lock();
+        auto list = _ctx.query_devices();
+        usb_mutex.unlock();
+        if (0 == list.size())
+        {
+            ROS_ERROR("No RealSense devices were found!.");
+            return;
+        }
+
+        bool found = false;
+        for (auto&& dev : list)
+        {
+            auto sn = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+            ROS_DEBUG_STREAM("Device with serial number " << sn << " was found.");
+            if (_serial_no.empty())
+            {
+                _dev = dev;
+                _serial_no = sn;
+                found = true;
+                break;
+            }
+            else if (sn == _serial_no)
+            {
+                _dev = dev;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            ROS_ERROR_STREAM("The requested device with serial number " << _serial_no << " is NOT found!");
+            return;
+        }
+
+        _ctx.set_devices_changed_callback([this](rs2::event_information& info)
+        {
+            if (info.was_removed(_dev))
+            {
+                ROS_ERROR("The device has been disconnected!");
+            }
+        });
+    }
+}
+
+void RealSenseNode::publishTopics()
 {
-    getParameters();
     setupDevice();
     setupPublishers();
     setupServices();
     setupStreams();
     publishStaticTransforms();
+    if (_params)
+    {
+      _params->registerDynamicReconfigCb(this);
+    }
     ROS_INFO_STREAM("RealSense Node Is Up!");
 }
 
-void BaseRealSenseNode::registerDynamicReconfigCb()
-{
-    ROS_INFO("Dynamic reconfig parameters is not implemented in the base node.");
-}
 
-bool BaseRealSenseNode::enableStreams(std_srvs::SetBool::Request& req, std_srvs::SetBool::Response& res)
+bool RealSenseNode::enableStreams(std_srvs::SetBool::Request& req, std_srvs::SetBool::Response& res)
 {
     res.success = true;
     for (auto& streams : IMAGE_STREAMS)
@@ -137,6 +242,7 @@ bool BaseRealSenseNode::enableStreams(std_srvs::SetBool::Request& req, std_srvs:
                     res.message += std::string("Failed to start stream:  ") + e.what() + '\n';
                     res.success = false;
                 }
+                depth_callback_timer_.start();
             }
             else
             {
@@ -149,6 +255,7 @@ bool BaseRealSenseNode::enableStreams(std_srvs::SetBool::Request& req, std_srvs:
                     res.message += std::string("Failed to stop stream:  ") + e.what() + '\n';
                     res.success = false;
                 }
+                depth_callback_timer_.stop();
             }
         }
     }
@@ -156,7 +263,7 @@ bool BaseRealSenseNode::enableStreams(std_srvs::SetBool::Request& req, std_srvs:
     return true;
 }
 
-void BaseRealSenseNode::getParameters()
+void RealSenseNode::getParameters()
 {
     ROS_INFO("getParameters...");
 
@@ -174,6 +281,7 @@ void BaseRealSenseNode::getParameters()
     _pnh.param("depth_width", _width[DEPTH], DEPTH_WIDTH);
     _pnh.param("depth_height", _height[DEPTH], DEPTH_HEIGHT);
     _pnh.param("depth_fps", _fps[DEPTH], DEPTH_FPS);
+
     _pnh.param("enable_depth", _enable[DEPTH], ENABLE_DEPTH);
     _aligned_depth_images[DEPTH].resize(_width[DEPTH] * _height[DEPTH] * _unit_step_size[DEPTH]);
 
@@ -227,9 +335,17 @@ void BaseRealSenseNode::getParameters()
     _pnh.param("aligned_depth_to_infra1_frame_id",  _depth_aligned_frame_id[INFRA1],  DEFAULT_ALIGNED_DEPTH_TO_INFRA1_FRAME_ID);
     _pnh.param("aligned_depth_to_infra2_frame_id",  _depth_aligned_frame_id[INFRA2],  DEFAULT_ALIGNED_DEPTH_TO_INFRA2_FRAME_ID);
     _pnh.param("aligned_depth_to_fisheye_frame_id", _depth_aligned_frame_id[FISHEYE], DEFAULT_ALIGNED_DEPTH_TO_FISHEYE_FRAME_ID);
+
+    _pnh.param("rosbag_filename", _rosbag_filename, _rosbag_filename);
+
+    double depth_callback_timeout = 30; // seconds
+    _pnh.param("depth_callback_timeout", depth_callback_timeout, depth_callback_timeout);
+    depth_callback_timeout_ = ros::Duration(depth_callback_timeout);
+
+    _pnh.param("serial_no", _serial_no, _serial_no);
 }
 
-void BaseRealSenseNode::setupDevice()
+void RealSenseNode::setupDevice()
 {
     ROS_INFO("setupDevice...");
     try{
@@ -342,32 +458,39 @@ void BaseRealSenseNode::setupDevice()
     }
 }
 
-void BaseRealSenseNode::TemperatureUpdate(diagnostic_updater::DiagnosticStatusWrapper& stat)
+void RealSenseNode::TemperatureUpdate(diagnostic_updater::DiagnosticStatusWrapper& stat)
 {
  
-    auto dbg = _dev.as<rs2::debug_protocol>();
-    std::vector<uint8_t> cmd = { 0x14, 0, 0xab, 0xcd, 0x2a, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    try 
+    {
+        auto dbg = _dev.as<rs2::debug_protocol>();
+        std::vector<uint8_t> cmd = { 0x14, 0, 0xab, 0xcd, 0x2a, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
      
-    auto res = dbg.send_and_receive_raw_data(cmd);
-    temperature_ = res[4];
+        auto res = dbg.send_and_receive_raw_data(cmd);
+        temperature_ = res[4];
                 
-    stat.summary(diagnostic_msgs::DiagnosticStatus::OK, "OK");
+        stat.summary(diagnostic_msgs::DiagnosticStatus::OK, "OK");
   
-    stat.add("Projector Temperature", temperature_);
-    if (temperature_ > 50) {
-        stat.mergeSummary(diagnostic_msgs::DiagnosticStatus::ERROR, "Temperature is Higher than 50 Degree Celsius");
+        stat.add("Projector Temperature", temperature_);
+        if (temperature_ > 50) 
+        {
+            stat.mergeSummary(diagnostic_msgs::DiagnosticStatus::ERROR, "Temperature is Higher than 50 Degree Celsius");
+        }
+    } 
+    catch (const rs2::error& e) 
+    {
+        ROS_ERROR_STREAM_THROTTLE(3, "Can not check device temperature " << e.what());
     }
 
-
 }
 
-void BaseRealSenseNode::setupServices()
+void RealSenseNode::setupServices()
 {
   ROS_INFO("setupServices...");
-  _enable_streams_service = _pnh.advertiseService("enable_streams", &BaseRealSenseNode::enableStreams, this);
+  _enable_streams_service = _pnh.advertiseService("enable_streams", &RealSenseNode::enableStreams, this);
 }
 
-void BaseRealSenseNode::setupPublishers()
+void RealSenseNode::setupPublishers()
 {
     ROS_INFO("setupPublishers...");
     image_transport::ImageTransport image_transport(_node_handle);
@@ -382,7 +505,7 @@ void BaseRealSenseNode::setupPublishers()
     }
 
     temp_diagnostic_updater_.setHardwareIDf("D435_temperature");
-    temp_diagnostic_updater_.add("Temperature", this, &BaseRealSenseNode::TemperatureUpdate);
+    temp_diagnostic_updater_.add("Temperature", this, &RealSenseNode::TemperatureUpdate);
 
     temp_update_timer_ = _node_handle.createTimer(ros::Duration(0.1), boost::bind(&diagnostic_updater::Updater::update, &temp_diagnostic_updater_));
 
@@ -462,7 +585,7 @@ void BaseRealSenseNode::setupPublishers()
     }
 }
 
-void BaseRealSenseNode::alignFrame(const rs2_intrinsics& from_intrin,
+void RealSenseNode::alignFrame(const rs2_intrinsics& from_intrin,
                                    const rs2_intrinsics& other_intrin,
                                    rs2::frame from_image,
                                    uint32_t output_image_bytes_per_pixel,
@@ -522,7 +645,7 @@ void BaseRealSenseNode::alignFrame(const rs2_intrinsics& from_intrin,
     }
 }
 
-void BaseRealSenseNode::updateIsFrameArrived(std::map<stream_index_pair, bool>& is_frame_arrived,
+void RealSenseNode::updateIsFrameArrived(std::map<stream_index_pair, bool>& is_frame_arrived,
                                              rs2_stream stream_type, int stream_index)
 {
     try
@@ -535,7 +658,7 @@ void BaseRealSenseNode::updateIsFrameArrived(std::map<stream_index_pair, bool>& 
     }
 }
 
-void BaseRealSenseNode::publishAlignedDepthToOthers(rs2::frame depth_frame, const std::vector<rs2::frame>& frames, const ros::Time& t)
+void RealSenseNode::publishAlignedDepthToOthers(rs2::frame depth_frame, const std::vector<rs2::frame>& frames, const ros::Time& t)
 {
     for (auto&& other_frame : frames)
     {
@@ -569,7 +692,7 @@ void BaseRealSenseNode::publishAlignedDepthToOthers(rs2::frame depth_frame, cons
     }
 }
 
-void BaseRealSenseNode::filterFrame(rs2::frame& frame)
+void RealSenseNode::filterFrame(rs2::frame& frame)
 {
     for (auto&& filter : filters)
     {
@@ -580,7 +703,7 @@ void BaseRealSenseNode::filterFrame(rs2::frame& frame)
     }
 }
 
-void BaseRealSenseNode::enable_devices()
+void RealSenseNode::enable_devices()
 {
 	for (auto& streams : IMAGE_STREAMS)
 	{
@@ -640,7 +763,7 @@ void BaseRealSenseNode::enable_devices()
 	}
 }
 
-void BaseRealSenseNode::setupStreams()
+void RealSenseNode::setupStreams()
 {
 	ROS_INFO("setupStreams...");
 	enable_devices();
@@ -658,6 +781,7 @@ void BaseRealSenseNode::setupStreams()
         _frame_callback = [this](rs2::frame frame)
         {
             try{
+                depth_callback_timer_.setPeriod(depth_callback_timeout_, true);
                 // We compute a ROS timestamp which is based on an initial ROS time at point of first frame,
                 // and the incremental timestamp from the camera.
                 // In sync mode the timestamp is based on ROS time
@@ -801,6 +925,7 @@ void BaseRealSenseNode::setupStreams()
                 {
                     sens.start(_frame_callback);
                 }
+                depth_callback_timer_.start();
             }
         }//end for
 
@@ -952,7 +1077,7 @@ void BaseRealSenseNode::setupStreams()
     }
 }
 
-void BaseRealSenseNode::updateStreamCalibData(const rs2::video_stream_profile& video_profile)
+void RealSenseNode::updateStreamCalibData(const rs2::video_stream_profile& video_profile)
 {
     stream_index_pair stream_index{video_profile.stream_type(), video_profile.stream_index()};
     auto intrinsic = video_profile.get_intrinsics();
@@ -1027,7 +1152,7 @@ void BaseRealSenseNode::updateStreamCalibData(const rs2::video_stream_profile& v
     }
 }
 
-tf::Quaternion BaseRealSenseNode::rotationMatrixToQuaternion(const float rotation[9]) const
+tf::Quaternion RealSenseNode::rotationMatrixToQuaternion(const float rotation[9]) const
 {
     Eigen::Matrix3f m;
     // We need to be careful about the order, as RS2 rotation matrix is
@@ -1039,7 +1164,7 @@ tf::Quaternion BaseRealSenseNode::rotationMatrixToQuaternion(const float rotatio
     return tf::Quaternion(q.x(), q.y(), q.z(), q.w());
 }
 
-void BaseRealSenseNode::publish_static_tf(const ros::Time& t,
+void RealSenseNode::publish_static_tf(const ros::Time& t,
                                           const float3& trans,
                                           const quaternion& q,
                                           const std::string& from,
@@ -1059,7 +1184,7 @@ void BaseRealSenseNode::publish_static_tf(const ros::Time& t,
     _static_tf_broadcaster.sendTransform(msg);
 }
 
-void BaseRealSenseNode::publishStaticTransforms()
+void RealSenseNode::publishStaticTransforms()
 {
     ROS_INFO("publishStaticTransforms...");
     // Publish static transforms
@@ -1177,7 +1302,7 @@ void BaseRealSenseNode::publishStaticTransforms()
     }
 }
 
-void BaseRealSenseNode::publishDepthPCTopic(const ros::Time& t, const std::map<stream_index_pair, bool>& is_frame_arrived)
+void RealSenseNode::publishDepthPCTopic(const ros::Time& t, const std::map<stream_index_pair, bool>& is_frame_arrived)
 {
     try
     {
@@ -1246,7 +1371,7 @@ void BaseRealSenseNode::publishDepthPCTopic(const ros::Time& t, const std::map<s
     _pointcloud_xyz_publisher.publish(msg_pointcloud);
 }
 
-void BaseRealSenseNode::publishRgbToDepthPCTopic(const ros::Time& t, const std::map<stream_index_pair, bool>& is_frame_arrived)
+void RealSenseNode::publishRgbToDepthPCTopic(const ros::Time& t, const std::map<stream_index_pair, bool>& is_frame_arrived)
 {
     try
     {
@@ -1345,7 +1470,7 @@ void BaseRealSenseNode::publishRgbToDepthPCTopic(const ros::Time& t, const std::
     _pointcloud_xyzrgb_publisher.publish(msg_pointcloud);
 }
 
-Extrinsics BaseRealSenseNode::rsExtrinsicsToMsg(const rs2_extrinsics& extrinsics, const std::string& frame_id) const
+Extrinsics RealSenseNode::rsExtrinsicsToMsg(const rs2_extrinsics& extrinsics, const std::string& frame_id) const
 {
     Extrinsics extrinsicsMsg;
     for (int i = 0; i < 9; ++i)
@@ -1359,14 +1484,14 @@ Extrinsics BaseRealSenseNode::rsExtrinsicsToMsg(const rs2_extrinsics& extrinsics
     return extrinsicsMsg;
 }
 
-rs2_extrinsics BaseRealSenseNode::getRsExtrinsics(const stream_index_pair& from_stream, const stream_index_pair& to_stream)
+rs2_extrinsics RealSenseNode::getRsExtrinsics(const stream_index_pair& from_stream, const stream_index_pair& to_stream)
 {
     auto& from = _enabled_profiles[from_stream].front();
     auto& to = _enabled_profiles[to_stream].front();
     return from.get_extrinsics_to(to);
 }
 
-IMUInfo BaseRealSenseNode::getImuInfo(const stream_index_pair& stream_index)
+IMUInfo RealSenseNode::getImuInfo(const stream_index_pair& stream_index)
 {
     IMUInfo info{};
     auto sp = _enabled_profiles[stream_index].front().as<rs2::motion_stream_profile>();
@@ -1394,7 +1519,7 @@ IMUInfo BaseRealSenseNode::getImuInfo(const stream_index_pair& stream_index)
     return info;
 }
 
-void BaseRealSenseNode::publishFrame(rs2::frame f, const ros::Time& t,
+void RealSenseNode::publishFrame(rs2::frame f, const ros::Time& t,
                                      const stream_index_pair& stream,
                                      std::map<stream_index_pair, cv::Mat>& images,
                                      const std::map<stream_index_pair, ros::Publisher>& info_publishers,
@@ -1456,7 +1581,17 @@ void BaseRealSenseNode::publishFrame(rs2::frame f, const ros::Time& t,
     }
 }
 
-bool BaseRealSenseNode::getEnabledProfile(const stream_index_pair& stream_index, rs2::stream_profile& profile)
+void RealSenseNode::setHealthTimers() {
+  auto reset_this = [this](const ros::TimerEvent&) -> void
+  {
+    ROS_WARN_STREAM("RealSense " << _serial_no << " driver timeout! Resetting");
+    resetNode();
+  };
+  depth_callback_timer_ = _node_handle.createTimer(depth_callback_timeout_, reset_this, false, !_dev);
+
+}
+
+bool RealSenseNode::getEnabledProfile(const stream_index_pair& stream_index, rs2::stream_profile& profile)
     {
         // Assuming that all D400 SKUs have depth sensor
         auto profiles = _enabled_profiles[stream_index];
@@ -1471,198 +1606,7 @@ bool BaseRealSenseNode::getEnabledProfile(const stream_index_pair& stream_index,
     }
 
 
-BaseD400Node::BaseD400Node(ros::NodeHandle& nodeHandle,
-                           ros::NodeHandle& privateNodeHandle,
-                           rs2::device dev, const std::string& serial_no)
-    : BaseRealSenseNode(nodeHandle,
-                        privateNodeHandle,
-                        dev, serial_no)
-{}
 
-void BaseD400Node::callback(base_d400_paramsConfig &config, uint32_t level)
-{
-    ROS_DEBUG_STREAM("D400 - Level: " << level);
-
-    if (set_default_dynamic_reconfig_values == level)
-    {
-        for (int i = 1 ; i < base_depth_count ; ++i)
-        {
-            ROS_DEBUG_STREAM("base_depth_param = " << i);
-            setParam(config ,(base_depth_param)i);
-        }
-    }
-    else
-    {
-        setParam(config, (base_depth_param)level);
-    }
-}
-
-void BaseD400Node::setOption(stream_index_pair sip, rs2_option opt, float val)
-{
-    _sensors[sip].set_option(opt, val);
-}
-
-void BaseD400Node::setParam(rs435_paramsConfig &config, base_depth_param param)
-{
-    base_d400_paramsConfig base_config;
-    base_config.base_depth_gain = config.rs435_depth_gain;
-    base_config.base_depth_enable_auto_exposure = config.rs435_depth_enable_auto_exposure;
-    base_config.base_depth_visual_preset = config.rs435_depth_visual_preset;
-    base_config.base_depth_frames_queue_size = config.rs435_depth_frames_queue_size;
-    base_config.base_depth_error_polling_enabled = config.rs435_depth_error_polling_enabled;
-    base_config.base_depth_output_trigger_enabled = config.rs435_depth_output_trigger_enabled;
-    base_config.base_depth_units = config.rs435_depth_units;
-    base_config.base_JSON_file_path = config.rs435_JSON_file_path;
-    base_config.base_enable_depth_to_disparity_filter = config.rs435_enable_depth_to_disparity_filter;
-    base_config.base_enable_spatial_filter = config.rs435_enable_spatial_filter;
-    base_config.base_enable_temporal_filter = config.rs435_enable_temporal_filter;
-    base_config.base_enable_disparity_to_depth_filter = config.rs435_enable_disparity_to_depth_filter;
-    base_config.base_spatial_filter_magnitude = config.rs435_spatial_filter_magnitude;
-    base_config.base_spatial_filter_smooth_alpha = config.rs435_spatial_filter_smooth_alpha;
-    base_config.base_spatial_filter_smooth_delta = config.rs435_spatial_filter_smooth_delta;
-    base_config.base_spatial_filter_holes_fill = config.rs435_spatial_filter_holes_fill;
-    base_config.base_temporal_filter_smooth_alpha = config.rs435_temporal_filter_smooth_alpha;
-    base_config.base_temporal_filter_smooth_delta = config.rs435_temporal_filter_smooth_delta;
-    base_config.base_temporal_filter_holes_fill = config.rs435_temporal_filter_holes_fill;
-    setParam(base_config, param);
-}
-
-void BaseD400Node::setParam(rs415_paramsConfig &config, base_depth_param param)
-{
-    base_d400_paramsConfig base_config;
-    base_config.base_depth_gain = config.rs415_depth_gain;
-    base_config.base_depth_enable_auto_exposure = config.rs415_depth_enable_auto_exposure;
-    base_config.base_depth_visual_preset = config.rs415_depth_visual_preset;
-    base_config.base_depth_frames_queue_size = config.rs415_depth_frames_queue_size;
-    base_config.base_depth_error_polling_enabled = config.rs415_depth_error_polling_enabled;
-    base_config.base_depth_output_trigger_enabled = config.rs415_depth_output_trigger_enabled;
-    base_config.base_depth_units = config.rs415_depth_units;
-    base_config.base_JSON_file_path = config.rs415_JSON_file_path;
-    base_config.base_enable_depth_to_disparity_filter = config.rs415_enable_depth_to_disparity_filter;
-    base_config.base_enable_spatial_filter = config.rs415_enable_spatial_filter;
-    base_config.base_enable_temporal_filter = config.rs415_enable_temporal_filter;
-    base_config.base_enable_disparity_to_depth_filter = config.rs415_enable_disparity_to_depth_filter;
-    base_config.base_spatial_filter_magnitude = config.rs415_spatial_filter_magnitude;
-    base_config.base_spatial_filter_smooth_alpha = config.rs415_spatial_filter_smooth_alpha;
-    base_config.base_spatial_filter_smooth_delta = config.rs415_spatial_filter_smooth_delta;
-    base_config.base_spatial_filter_holes_fill = config.rs415_spatial_filter_holes_fill;
-    base_config.base_temporal_filter_smooth_alpha = config.rs415_temporal_filter_smooth_alpha;
-    base_config.base_temporal_filter_smooth_delta = config.rs415_temporal_filter_smooth_delta;
-    base_config.base_temporal_filter_holes_fill = config.rs415_temporal_filter_holes_fill;
-    setParam(base_config, param);
-}
-
-void BaseD400Node::setParam(base_d400_paramsConfig &config, base_depth_param param)
-{
-    // W/O for zero param
-    if (0 == param)
-        return;
-
-    switch (param) {
-    case base_depth_gain:
-        ROS_DEBUG_STREAM("base_depth_gain: " << config.base_depth_gain);
-        setOption(DEPTH, RS2_OPTION_GAIN, config.base_depth_gain);
-        break;
-    case base_depth_enable_auto_exposure:
-        ROS_DEBUG_STREAM("base_depth_enable_auto_exposure: " << config.base_depth_enable_auto_exposure);
-        setOption(DEPTH, RS2_OPTION_ENABLE_AUTO_EXPOSURE, config.base_depth_enable_auto_exposure);
-        break;
-    case base_depth_visual_preset:
-        ROS_DEBUG_STREAM("base_depth_visual_preset: " << config.base_depth_visual_preset);
-        setOption(DEPTH, RS2_OPTION_VISUAL_PRESET, config.base_depth_visual_preset);
-        break;
-    case base_depth_frames_queue_size:
-        ROS_DEBUG_STREAM("base_depth_frames_queue_size: " << config.base_depth_frames_queue_size);
-        setOption(DEPTH, RS2_OPTION_FRAMES_QUEUE_SIZE, config.base_depth_frames_queue_size);
-        break;
-    case base_depth_error_polling_enabled:
-        ROS_DEBUG_STREAM("base_depth_error_polling_enabled: " << config.base_depth_error_polling_enabled);
-        setOption(DEPTH, RS2_OPTION_ERROR_POLLING_ENABLED, config.base_depth_error_polling_enabled);
-        break;
-    case base_depth_output_trigger_enabled:
-        ROS_DEBUG_STREAM("base_depth_output_trigger_enabled: " << config.base_depth_output_trigger_enabled);
-        setOption(DEPTH, RS2_OPTION_OUTPUT_TRIGGER_ENABLED, config.base_depth_output_trigger_enabled);
-        break;
-    case base_depth_units:
-        break;
-    case base_JSON_file_path:
-    {
-        ROS_DEBUG_STREAM("base_JSON_file_path: " << config.base_JSON_file_path);
-        auto adv_dev = _dev.as<rs400::advanced_mode>();
-        if (!adv_dev)
-        {
-            ROS_WARN_STREAM("Device doesn't support Advanced Mode!");
-            return;
-        }
-        if (!config.base_JSON_file_path.empty())
-        {
-            std::ifstream in(config.base_JSON_file_path);
-            if (!in.is_open())
-            {
-                ROS_WARN_STREAM("JSON file provided doesn't exist!");
-                return;
-            }
-
-            adv_dev.load_json(config.base_JSON_file_path);
-        }
-        break;
-    }
-    case base_enable_depth_to_disparity_filter:
-        ROS_DEBUG_STREAM("base_enable_depth_to_disparity_filter: " << config.base_enable_depth_to_disparity_filter);
-        filters[DEPTH_TO_DISPARITY].is_enabled = config.base_enable_depth_to_disparity_filter;
-        break;
-    case base_enable_spatial_filter:
-        ROS_DEBUG_STREAM("base_enable_spatial_filter: " << config.base_enable_spatial_filter);
-        filters[SPATIAL].is_enabled = config.base_enable_spatial_filter;
-        break;
-    case base_enable_temporal_filter:
-        ROS_DEBUG_STREAM("base_enable_temporal_filter: " << config.base_enable_temporal_filter);
-        filters[TEMPORAL].is_enabled = config.base_enable_temporal_filter;
-        break;
-    case base_enable_disparity_to_depth_filter:
-        ROS_DEBUG_STREAM("base_enable_disparity_to_depth_filter: " << config.base_enable_disparity_to_depth_filter);
-        filters[DISPARITY_TO_DEPTH].is_enabled = config.base_enable_disparity_to_depth_filter;
-        break;
-    case base_spatial_filter_magnitude:
-        ROS_DEBUG_STREAM("base_spatial_filter_magnitude: " << config.base_spatial_filter_magnitude);
-        filters[SPATIAL].filter.set_option(RS2_OPTION_FILTER_MAGNITUDE, config.base_spatial_filter_magnitude);
-        break;
-    case base_spatial_filter_smooth_alpha:
-        ROS_DEBUG_STREAM("base_spatial_filter_smooth_alpha: " << config.base_spatial_filter_smooth_alpha);
-        filters[SPATIAL].filter.set_option(RS2_OPTION_FILTER_SMOOTH_ALPHA, config.base_spatial_filter_smooth_alpha);
-        break;
-    case base_spatial_filter_smooth_delta:
-        ROS_DEBUG_STREAM("base_spatial_filter_smooth_delta: " << config.base_spatial_filter_smooth_delta);
-        filters[SPATIAL].filter.set_option(RS2_OPTION_FILTER_SMOOTH_DELTA, config.base_spatial_filter_smooth_delta);
-        break;
-    case base_spatial_filter_holes_fill:
-        ROS_DEBUG_STREAM("base_spatial_filter_holes_fill: " << config.base_spatial_filter_holes_fill);
-        filters[SPATIAL].filter.set_option(RS2_OPTION_HOLES_FILL, config.base_spatial_filter_holes_fill);
-        break;
-    case base_temporal_filter_smooth_alpha:
-        ROS_DEBUG_STREAM("base_temporal_filter_smooth_alpha: " << config.base_temporal_filter_smooth_alpha);
-        filters[TEMPORAL].filter.set_option(RS2_OPTION_FILTER_SMOOTH_ALPHA, config.base_temporal_filter_smooth_alpha);
-        break;
-    case base_temporal_filter_smooth_delta:
-        ROS_DEBUG_STREAM("base_temporal_filter_smooth_delta: " << config.base_temporal_filter_smooth_delta);
-        filters[TEMPORAL].filter.set_option(RS2_OPTION_FILTER_SMOOTH_DELTA, config.base_temporal_filter_smooth_delta);
-        break;
-    case base_temporal_filter_holes_fill:
-        ROS_DEBUG_STREAM("base_temporal_filter_holes_fill: " << config.base_temporal_filter_holes_fill);
-        filters[TEMPORAL].filter.set_option(RS2_OPTION_HOLES_FILL, config.base_temporal_filter_holes_fill);
-        break;
-    default:
-        ROS_WARN_STREAM("Unrecognized D400 param (" << param << ")");
-        break;
-    }
-}
-
-void BaseD400Node::registerDynamicReconfigCb()
-{
-    _server = std::make_shared<dynamic_reconfigure::Server<base_d400_paramsConfig>>();
-    _f = boost::bind(&BaseD400Node::callback, this, _1, _2);
-    _server->setCallback(_f);
-}
 
 /**
 Constructor for filter_options, takes a name and a filter.

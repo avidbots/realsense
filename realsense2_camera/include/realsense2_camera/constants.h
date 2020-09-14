@@ -1,7 +1,8 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2018 Intel Corporation. All Rights Reserved
 
-#pragma once
+#ifndef REALSENSE2_CAMERA_CONSTANTS_H
+#define REALSENSE2_CAMERA_CONSTANTS_H
 
 #include <string>
 
@@ -94,3 +95,5 @@ namespace realsense2_camera
 
     using stream_index_pair = std::pair<rs2_stream, int>;
 }  // namespace realsense2_camera
+
+#endif  // REALSENSE2_CAMERA_CONSTANTS_H
