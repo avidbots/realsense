@@ -1667,7 +1667,7 @@ void BaseD400Node::registerDynamicReconfigCb()
 /**
 Constructor for filter_options, takes a name and a filter.
 */
-filter_options::filter_options(const std::string name, rs2::process_interface& filter) :
+filter_options::filter_options(const std::string name, rs2::filter& filter) :
     filter_name(name),
     filter(filter),
     is_enabled(true) {}

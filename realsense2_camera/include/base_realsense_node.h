@@ -12,7 +12,9 @@
 #include <std_srvs/SetBool.h>
 #include <diagnostic_updater/diagnostic_updater.h>
 #include <diagnostic_updater/update_functions.h>
+#include <librealsense2/hpp/rs_processing.hpp>
 #include <atomic>
+
 
 namespace realsense2_camera
 {
@@ -76,10 +78,10 @@ namespace realsense2_camera
     class filter_options
     {
     public:
-        filter_options(const std::string name, rs2::process_interface& filter);
+        filter_options(const std::string name, rs2::filter& filter);
         filter_options(filter_options&& other);
         std::string filter_name;           // Friendly name of the filter
-        rs2::process_interface& filter;    // The filter in use
+        rs2::filter& filter;    // The filter in use
         std::atomic_bool is_enabled;       // A boolean controlled by the user that determines whether to apply the filter or not
     };
 
@@ -116,6 +118,17 @@ namespace realsense2_camera
         struct quaternion
         {
             double x, y, z, w;
+        };
+
+        // required for librealsense v2.16+ compatibility.
+        // see: https://github.com/intel/ros2_intel_realsense/commit/6eb67b6d4a292e430e9b7be376d716799d9335c4
+        class PipelineSyncer : public rs2::asynchronous_syncer
+        {
+        public:
+            void operator()(rs2::frame f) const
+            {
+                invoke(std::move(f));
+            }
         };
 
         static std::string getNamespaceStr();
@@ -207,7 +220,7 @@ namespace realsense2_camera
         bool _sync_frames;
         bool _pointcloud;
         bool _use_ros_time;
-        rs2::asynchronous_syncer _syncer;
+        PipelineSyncer _syncer;
 
         std::map<stream_index_pair, cv::Mat> _depth_aligned_image;
         std::map<stream_index_pair, std::string> _depth_aligned_encoding;
