@@ -1,15 +1,39 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2018 Intel Corporation. All Rights Reserved
 
-#pragma once
+#ifndef REALSENSE2_CAMERA_REALSENSE_NODE_H
+#define REALSENSE2_CAMERA_REALSENSE_NODE_H
 
-#include "../include/realsense_node_factory.h"
-#include <dynamic_reconfigure/server.h>
-#include <realsense2_camera/base_d400_paramsConfig.h>
-#include <realsense2_camera/rs415_paramsConfig.h>
-#include <realsense2_camera/rs435_paramsConfig.h>
+#include <csignal>
+#include <fstream>
+#include <atomic>
+#include <mutex>
 
+#include <eigen3/Eigen/Geometry>
+
+#include <librealsense2/rs.hpp>
+#include <librealsense2/rsutil.h>
+#include <librealsense2/hpp/rs_processing.hpp>
+#include <librealsense2/rs_advanced_mode.hpp>
+
+#include <realsense2_camera/constants.h>
+#include <realsense2_camera/Extrinsics.h>
+#include <realsense2_camera/IMUInfo.h>
+#include <realsense2_camera/realsense_node.h>
+
+#include <ros/ros.h>
+#include <ros/package.h>
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/point_cloud2_iterator.h>
+#include <sensor_msgs/Imu.h>
 #include <std_srvs/SetBool.h>
+
+#include <tf/transform_broadcaster.h>
+#include <tf2_ros/static_transform_broadcaster.h>
+
 #include <diagnostic_updater/diagnostic_updater.h>
 #include <diagnostic_updater/update_functions.h>
 #include <librealsense2/hpp/rs_processing.hpp>
@@ -18,28 +42,10 @@
 
 namespace realsense2_camera
 {
-    enum base_depth_param{
-        base_depth_gain = 1,
-        base_depth_enable_auto_exposure,
-        base_depth_visual_preset,
-        base_depth_frames_queue_size,
-        base_depth_error_polling_enabled,
-        base_depth_output_trigger_enabled,
-        base_depth_units,
-        base_JSON_file_path,
-        base_enable_depth_to_disparity_filter,
-        base_enable_spatial_filter,
-        base_enable_temporal_filter,
-        base_enable_disparity_to_depth_filter,
-        base_spatial_filter_magnitude,
-        base_spatial_filter_smooth_alpha,
-        base_spatial_filter_smooth_delta,
-        base_spatial_filter_holes_fill,
-        base_temporal_filter_smooth_alpha,
-        base_temporal_filter_smooth_delta,
-        base_temporal_filter_holes_fill,
-        base_depth_count
-    };
+
+class RealSenseParamManagerBase;
+template<uint16_t Model>
+class RealSenseParamManager;
 
     enum filters{
         DEPTH_TO_DISPARITY,
@@ -85,31 +91,42 @@ namespace realsense2_camera
         std::atomic_bool is_enabled;       // A boolean controlled by the user that determines whether to apply the filter or not
     };
 
-    class BaseRealSenseNode : public InterfaceRealSenseNode
+    class RealSenseNode
     {
     public:
-        BaseRealSenseNode(ros::NodeHandle& nodeHandle,
-                          ros::NodeHandle& privateNodeHandle,
-                          rs2::device dev,
-                          const std::string& serial_no);
+        RealSenseNode(const ros::NodeHandle& nodeHandle, const ros::NodeHandle& privateNodeHandle);
 
-        virtual void publishTopics() override;
-        virtual void registerDynamicReconfigCb() override;
-        virtual ~BaseRealSenseNode() {}
+        void resetNode();
+        void getDevice();
 
-    protected:
+        void createParamsManager();
 
+        void publishTopics();
+        ~RealSenseNode() {}
+
+        static constexpr stream_index_pair COLOR{RS2_STREAM_COLOR, 0};
+        static constexpr stream_index_pair DEPTH{RS2_STREAM_DEPTH, 0};
+        static constexpr stream_index_pair INFRA1{RS2_STREAM_INFRARED, 1};
+        static constexpr stream_index_pair INFRA2{RS2_STREAM_INFRARED, 2};
+        static constexpr stream_index_pair FISHEYE{RS2_STREAM_FISHEYE, 0};
+        static constexpr stream_index_pair GYRO{RS2_STREAM_GYRO, 0};
+        static constexpr stream_index_pair ACCEL{RS2_STREAM_ACCEL, 0};
+
+    private:
+        rs2::context _ctx;
         const uint32_t set_default_dynamic_reconfig_values = 0xffffffff;
         rs2::device _dev;
-        ros::NodeHandle& _node_handle, _pnh;
+        std::string _rosbag_filename;
+        ros::NodeHandle _node_handle, _pnh;
         std::map<stream_index_pair, rs2::sensor> _sensors;
         rs2::spatial_filter  spat_filter;    // Spatial    - edge-preserving spatial smoothing
         rs2::temporal_filter temp_filter;    // Temporal   - reduces temporal noise
         rs2::disparity_transform depth_to_disparity{true};
         rs2::disparity_transform disparity_to_depth{false};
         std::vector<filter_options> filters;
+        std::mutex _mutex;
 
-    private:
+
         struct float3
         {
             float x, y, z;
@@ -179,6 +196,9 @@ namespace realsense2_camera
                         std::vector<uint8_t>& out_vec);
 
         void TemperatureUpdate(diagnostic_updater::DiagnosticStatusWrapper& stat);
+
+        void setHealthTimers();
+
         
         std::string _json_file_path;
         std::string _serial_no;
@@ -240,26 +260,20 @@ namespace realsense2_camera
         diagnostic_updater::Updater temp_diagnostic_updater_;
         ros::Timer  temp_update_timer_;
         int temperature_;
-    };//end class
+        ros::Timer depth_callback_timer_;
+        ros::Duration depth_callback_timeout_;
+        std::unique_ptr<RealSenseParamManagerBase> _params;
 
-    class BaseD400Node : public BaseRealSenseNode
-    {
-    public:
-        BaseD400Node(ros::NodeHandle& nodeHandle,
-                     ros::NodeHandle& privateNodeHandle,
-                     rs2::device dev, const std::string& serial_no);
-        virtual void registerDynamicReconfigCb() override;
+        const std::vector<std::vector<stream_index_pair>> IMAGE_STREAMS = {{{DEPTH, INFRA1, INFRA2},
+                                                                            {COLOR},
+                                                                            {FISHEYE}}};
 
-    protected:
-        void setParam(rs415_paramsConfig &config, base_depth_param param);
-        void setParam(rs435_paramsConfig &config, base_depth_param param);
+        const std::vector<std::vector<stream_index_pair>> HID_STREAMS = {{GYRO, ACCEL}};
 
-    private:
-        void callback(base_d400_paramsConfig &config, uint32_t level);
-        void setOption(stream_index_pair sip, rs2_option opt, float val);
-        void setParam(base_d400_paramsConfig &config, base_depth_param param);
+        template <uint16_t Model>
+        friend class RealSenseParamManager;
 
-        std::shared_ptr<dynamic_reconfigure::Server<base_d400_paramsConfig>> _server;
-        dynamic_reconfigure::Server<base_d400_paramsConfig>::CallbackType _f;
-    };
-}
+    };  // end class
+}  // namespace realsense2_camera
+
+#endif // REALSENSE2_CAMERA_REALSENSE_NODE_H
