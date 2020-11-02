@@ -28,9 +28,6 @@ RealSenseNode::RealSenseNode(const ros::NodeHandle &nodeHandle,
     _intialize_time_base(false),
     _namespace(getNamespaceStr())
 {
-     getParameters();
-     getDevice();
-
     // Types for depth stream
     _is_frame_arrived[DEPTH] = false;
     _format[DEPTH] = RS2_FORMAT_Z16;   // libRS type
@@ -90,6 +87,9 @@ RealSenseNode::RealSenseNode(const ros::NodeHandle &nodeHandle,
     _encoding[ACCEL] = sensor_msgs::image_encodings::TYPE_8UC1; // ROS message type
     _unit_step_size[ACCEL] = sizeof(uint8_t); // sensor_msgs::ImagePtr row step size
     _stream_name[ACCEL] = "accel";
+
+    getParameters();
+    getDevice();
 
     // TODO: Improve the pipeline to accept decimation filter
     // TODO: Provide disparity map if requested
