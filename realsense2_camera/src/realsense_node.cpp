@@ -336,6 +336,8 @@ void RealSenseNode::getParameters()
     _pnh.param("aligned_depth_to_infra2_frame_id",  _depth_aligned_frame_id[INFRA2],  DEFAULT_ALIGNED_DEPTH_TO_INFRA2_FRAME_ID);
     _pnh.param("aligned_depth_to_fisheye_frame_id", _depth_aligned_frame_id[FISHEYE], DEFAULT_ALIGNED_DEPTH_TO_FISHEYE_FRAME_ID);
 
+    _pnh.param("publish_every_nth_frameset", _publish_every_nth_frameset, PUBLISH_EVERY_NTH_FRAMESET);
+
     _pnh.param("rosbag_filename", _rosbag_filename, _rosbag_filename);
 
     double depth_callback_timeout = 30; // seconds
@@ -814,8 +816,7 @@ void RealSenseNode::setupStreams()
                     rs2::frame depth_frame;
                     auto frameset = frame.as<rs2::frameset>();
 
-                    const unsigned int data_skip = 5;
-                    const bool publish_this_frameset = (++_publish_skip_counter) % data_skip == 0;
+                    const bool publish_this_frameset = (_publish_every_nth_frameset == 0) || ((++_publish_skip_counter) % _publish_every_nth_frameset == 0);
 
                     if (publish_this_frameset)
                     {

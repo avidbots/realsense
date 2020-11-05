@@ -227,7 +227,8 @@ class RealSenseParamManager;
         bool _pointcloud;
         bool _use_ros_time;
         rs2::asynchronous_syncer _syncer;
-        unsigned int _publish_skip_counter;
+        uint32_t _publish_skip_counter;
+        uint32_t _publish_every_nth_frameset;
 
         std::map<stream_index_pair, cv::Mat> _depth_aligned_image;
         std::map<stream_index_pair, std::string> _depth_aligned_encoding;
