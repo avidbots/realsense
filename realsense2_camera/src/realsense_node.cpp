@@ -343,6 +343,8 @@ void RealSenseNode::getParameters()
     depth_callback_timeout_ = ros::Duration(depth_callback_timeout);
 
     _pnh.param("serial_no", _serial_no, _serial_no);
+
+    _publish_skip_counter = 0;
 }
 
 void RealSenseNode::setupDevice()
@@ -811,44 +813,60 @@ void RealSenseNode::setupStreams()
                     bool is_depth_arrived = false;
                     rs2::frame depth_frame;
                     auto frameset = frame.as<rs2::frameset>();
-                    for (auto it = frameset.begin(); it != frameset.end(); ++it)
+
+                    const unsigned int data_skip = 5;
+                    const bool publish_this_frameset = (++_publish_skip_counter) % data_skip == 0;
+
+                    if (publish_this_frameset)
                     {
-                        auto f = (*it);
-                        auto stream_type = f.get_profile().stream_type();
-                        auto stream_index = f.get_profile().stream_index();
-                        updateIsFrameArrived(is_frame_arrived, stream_type, stream_index);
-
-                        ROS_DEBUG("Frameset contain (%s, %d) frame. frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu",
-                                  rs2_stream_to_string(stream_type), stream_index, frame.get_frame_number(), frame.get_timestamp(), t.toNSec());
-
-                        if (stream_type == RS2_STREAM_DEPTH)
+                        for (auto it = frameset.begin(); it != frameset.end(); ++it)
                         {
-                            filterFrame(f);
+                            auto f = (*it);
+                            auto stream_type = f.get_profile().stream_type();
+                            auto stream_index = f.get_profile().stream_index();
+                            updateIsFrameArrived(is_frame_arrived, stream_type, stream_index);
+
+                            ROS_DEBUG("Frameset contain (%s, %d) frame. frame_number: %llu ; frame_TS: %f ; ros_TS(NSec): %lu",
+                                    rs2_stream_to_string(stream_type), stream_index, frame.get_frame_number(), frame.get_timestamp(), t.toNSec());
+
+                            if (stream_type == RS2_STREAM_DEPTH)
+                            {
+                                filterFrame(f);
+                            }
+
+                            stream_index_pair sip{stream_type,stream_index};
+                            publishFrame(f, t,
+                                        sip,
+                                        _image,
+                                        _info_publisher,
+                                        _image_publishers, _seq,
+                                        _camera_info, _optical_frame_id,
+                                        _encoding);
+                            if (_align_depth && stream_type != RS2_STREAM_DEPTH)
+                            {
+                                frames.push_back(f);
+                            }
+                            else
+                            {
+                                depth_frame = f;
+                                is_depth_arrived = true;
+                            }
                         }
 
-                        stream_index_pair sip{stream_type,stream_index};
-                        publishFrame(f, t,
-                                     sip,
-                                     _image,
-                                     _info_publisher,
-                                     _image_publishers, _seq,
-                                     _camera_info, _optical_frame_id,
-                                     _encoding);
-                        if (_align_depth && stream_type != RS2_STREAM_DEPTH)
+                        if (_align_depth && is_depth_arrived)
                         {
-                            frames.push_back(f);
+                            //auto color_it = std::find_if(frames.begin(), frames.end(), [](const rs2::frame& fr){ return fr.get_profile().stream_type() == RS2_STREAM_COLOR; });
+                            //if (color_it != frames.end())
+                            //{
+                            //    ROS_WARN("%s: ALIGNED: DEPTH: %f; COLOR: %f", _namespace.c_str(), depth_frame.get_timestamp() / 1000.0, (*color_it).get_timestamp() / 1000.0);
+                            //}
+                            //else
+                            //{
+                            //    ROS_WARN("%s: ALIGNED: DEPTH: %f; COLOR: NO COLOR FRAME!", _namespace.c_str(), depth_frame.get_timestamp() / 1000.0);
+                            //}
+                            ROS_DEBUG("publishAlignedDepthToOthers(...)");
+                            publishAlignedDepthToOthers(depth_frame, frames, t);
                         }
-                        else
-                        {
-                            depth_frame = f;
-                            is_depth_arrived = true;
-                        }
-                    }
-
-                    if (_align_depth && is_depth_arrived)
-                    {
-                        ROS_DEBUG("publishAlignedDepthToOthers(...)");
-                        publishAlignedDepthToOthers(depth_frame, frames, t);
                     }
                 }
                 else
