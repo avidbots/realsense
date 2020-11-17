@@ -95,6 +95,11 @@ namespace realsense2_camera
 
     const int PUBLISH_EVERY_NTH_FRAMESET = 0; // 0 or 1 means publish every frameset
 
+    const bool DEFAULT_USE_FIX_SET_EXPOSURE = true;
+    const int DEFAULT_FIX_SET_EXPOSURE_MAX_TRIES = 5;
+    const double DEFAULT_FIX_SET_EXPOSURE_MAX_RESET_WAIT = 5.0; // [s]
+    const double DEFAULT_FIX_SET_EXPOSURE_MAX_FAIL_WAIT = 1.0; // [s]
+
     using stream_index_pair = std::pair<rs2_stream, int>;
 }  // namespace realsense2_camera
 
