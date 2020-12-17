@@ -13,6 +13,11 @@ constexpr stream_index_pair RealSenseNode::FISHEYE;
 constexpr stream_index_pair RealSenseNode::GYRO;
 constexpr stream_index_pair RealSenseNode::ACCEL;
 
+// Mutex used to prevent asynchronous_syncer (runs in a separate thread)
+// from accessing node's data in _frame_callback
+// when the node is resetting during resetNode() call
+std::mutex syncer_mutex;
+
 std::string RealSenseNode::getNamespaceStr()
 {
     auto ns = ros::this_node::getNamespace();
@@ -134,10 +139,32 @@ void RealSenseNode::createParamsManager() {
 }
 
 void RealSenseNode::resetNode() {
+    ROS_WARN("Resetting node: %s", _namespace.c_str());
+
+    std::lock_guard<std::mutex> syncer_mutex_guard(syncer_mutex);
+
+    ROS_INFO("Stop sensors: %s", _namespace.c_str());
+    for (auto& streams : IMAGE_STREAMS) {
+        auto& sens = _sensors[streams.front()];
+        if (sens) {
+           try {
+                sens.stop();
+            } catch (const rs2::error& e) {
+                ROS_ERROR("Unable to stop sensor: %s", _namespace.c_str());
+            }
+        }
+    }
+
     auto nh = _node_handle;
     auto pnh = _pnh;
+
+    ROS_INFO("Destroy node: %s", _namespace.c_str());
     this->~RealSenseNode();
+
+    ROS_INFO("Construct new node: %s", _namespace.c_str());
     new (this) RealSenseNode(nh, pnh);
+
+    ROS_INFO("Node reset successful: %s", _namespace.c_str());
 }
 
 void RealSenseNode::getDevice() {
@@ -349,6 +376,14 @@ void RealSenseNode::getParameters()
     double depth_callback_timeout = 30; // seconds
     _pnh.param("depth_callback_timeout", depth_callback_timeout, depth_callback_timeout);
     depth_callback_timeout_ = ros::Duration(depth_callback_timeout);
+
+    _pnh.param("use_depth_rate_monitor", _use_depth_rate_monitor, DEFAULT_USE_DEPTH_RATE_MONITOR);
+    _depth_rate_monitor_num_of_new_frames = 0;
+    _pnh.param("depth_rate_monitor_initial_cycles_number", _depth_rate_monitor_initial_cycles_number, DEFAULT_DEPTH_RATE_MONITOR_INITIAL_CYCLES_NUMBER);
+    _depth_rate_monitor_initial_cycles_counter = 0;
+    _pnh.param("depth_rate_monitor_min_frames_number_per_cycle", _depth_rate_monitor_min_frames_number_per_cycle, DEFAULT_DEPTH_RATE_MONITOR_MIN_FRAMES_NUMBER_PER_CYCLE);
+    _pnh.param("depth_rate_monitor_consequent_low_rate_frames_limit", _depth_rate_monitor_consequent_low_rate_frames_limit, DEFAULT_DEPTH_RATE_MONITOR_CONSEQUENT_LOW_RATE_FRAMES_LIMIT);
+    _depth_rate_monitor_consequent_low_rate_frames_counter = 0;
 
     _pnh.param("serial_no", _serial_no, _serial_no);
 
@@ -815,6 +850,7 @@ void RealSenseNode::setupStreams()
 
         _frame_callback = [this](rs2::frame frame)
         {
+            std::lock_guard<std::mutex> syncer_mutex_guard(syncer_mutex);
             try{
                 depth_callback_timer_.setPeriod(depth_callback_timeout_, true);
                 // We compute a ROS timestamp which is based on an initial ROS time at point of first frame,
@@ -864,6 +900,10 @@ void RealSenseNode::setupStreams()
                             if (stream_type == RS2_STREAM_DEPTH)
                             {
                                 filterFrame(f);
+                                if (_use_depth_rate_monitor)
+                                {
+                                    _depth_rate_monitor_num_of_new_frames++;
+                                }
                             }
 
                             stream_index_pair sip{stream_type,stream_index};
@@ -912,6 +952,10 @@ void RealSenseNode::setupStreams()
                     if (stream_type == RS2_STREAM_DEPTH)
                     {
                         filterFrame(frame);
+                        if (_use_depth_rate_monitor)
+                        {
+                            _depth_rate_monitor_num_of_new_frames++;
+                        }
                     }
 
                     stream_index_pair sip{stream_type,stream_index};
@@ -1639,6 +1683,36 @@ void RealSenseNode::setHealthTimers() {
   };
   depth_callback_timer_ = _node_handle.createTimer(depth_callback_timeout_, reset_this, false, !_dev);
 
+  if (_use_depth_rate_monitor) {
+    auto depth_rate_monitor_callback = [this](const ros::TimerEvent&) -> void
+    {
+        if (_depth_rate_monitor_initial_cycles_counter < _depth_rate_monitor_initial_cycles_number) {
+            _depth_rate_monitor_initial_cycles_counter++;
+        } else {
+            if (_depth_rate_monitor_num_of_new_frames < _depth_rate_monitor_min_frames_number_per_cycle) {
+                ROS_WARN(
+                    "Number of new depth frames is lower than the minimum: %d < %d: %s",
+                    _depth_rate_monitor_num_of_new_frames,
+                    _depth_rate_monitor_min_frames_number_per_cycle,
+                    _namespace.c_str()
+                );
+                _depth_rate_monitor_consequent_low_rate_frames_counter++;
+                if (_depth_rate_monitor_consequent_low_rate_frames_counter > _depth_rate_monitor_consequent_low_rate_frames_limit) {
+                    ROS_WARN(
+                        "Inconsistent depth rate detected: received %d concequent low rates. Resetting the node: %s",
+                        _depth_rate_monitor_consequent_low_rate_frames_counter,
+                        _namespace.c_str()
+                    );
+                    resetNode();
+                }
+            } else {
+                _depth_rate_monitor_consequent_low_rate_frames_counter = 0;
+            }
+        }
+        _depth_rate_monitor_num_of_new_frames = 0;
+    };
+    _depth_rate_monitor_timer = _node_handle.createTimer(ros::Duration(1.0), depth_rate_monitor_callback);
+  }
 }
 
 bool RealSenseNode::getEnabledProfile(const stream_index_pair& stream_index, rs2::stream_profile& profile)

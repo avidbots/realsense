@@ -266,6 +266,15 @@ class RealSenseParamManager;
         ros::Duration depth_callback_timeout_;
         std::unique_ptr<RealSenseParamManagerBase> _params;
 
+        bool _use_depth_rate_monitor;
+        ros::Timer _depth_rate_monitor_timer;
+        int _depth_rate_monitor_num_of_new_frames; // Number of depth frames received between depth_rate_monitor_timer callbacks
+        int _depth_rate_monitor_initial_cycles_number; // Number of timer cycles after startup we should ignore
+        int _depth_rate_monitor_initial_cycles_counter;
+        int _depth_rate_monitor_min_frames_number_per_cycle; // Minimal acceptable framerate
+        int _depth_rate_monitor_consequent_low_rate_frames_limit; // Number of consequent low rates before the node resets
+        int _depth_rate_monitor_consequent_low_rate_frames_counter;
+
         bool _use_fix_set_exposure;
         int _fix_set_exposure_max_tries;
         double _fix_set_exposure_max_reset_wait; // [s]

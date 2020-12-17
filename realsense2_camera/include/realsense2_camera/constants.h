@@ -95,7 +95,12 @@ namespace realsense2_camera
 
     const int PUBLISH_EVERY_NTH_FRAMESET = 0; // 0 or 1 means publish every frameset
 
-    const bool DEFAULT_USE_FIX_SET_EXPOSURE = true;
+    const bool DEFAULT_USE_DEPTH_RATE_MONITOR = true;
+    const int DEFAULT_DEPTH_RATE_MONITOR_INITIAL_CYCLES_NUMBER = 20;
+    const int DEFAULT_DEPTH_RATE_MONITOR_MIN_FRAMES_NUMBER_PER_CYCLE = 4;
+    const int DEFAULT_DEPTH_RATE_MONITOR_CONSEQUENT_LOW_RATE_FRAMES_LIMIT = 6;
+
+    const bool DEFAULT_USE_FIX_SET_EXPOSURE = false;
     const int DEFAULT_FIX_SET_EXPOSURE_MAX_TRIES = 5;
     const double DEFAULT_FIX_SET_EXPOSURE_MAX_RESET_WAIT = 5.0; // [s]
     const double DEFAULT_FIX_SET_EXPOSURE_MAX_FAIL_WAIT = 1.0; // [s]
