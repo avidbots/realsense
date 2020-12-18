@@ -141,19 +141,20 @@ void RealSenseNode::createParamsManager() {
 void RealSenseNode::resetNode() {
     ROS_WARN("Resetting node: %s", _namespace.c_str());
 
-    std::lock_guard<std::mutex> syncer_mutex_guard(syncer_mutex);
-
     ROS_INFO("Stop sensors: %s", _namespace.c_str());
     for (auto& streams : IMAGE_STREAMS) {
         auto& sens = _sensors[streams.front()];
         if (sens) {
            try {
                 sens.stop();
+                sens.close();
             } catch (const rs2::error& e) {
                 ROS_ERROR("Unable to stop sensor: %s", _namespace.c_str());
             }
         }
     }
+
+    std::lock_guard<std::mutex> syncer_mutex_guard(syncer_mutex);
 
     auto nh = _node_handle;
     auto pnh = _pnh;
@@ -164,7 +165,7 @@ void RealSenseNode::resetNode() {
     ROS_INFO("Construct new node: %s", _namespace.c_str());
     new (this) RealSenseNode(nh, pnh);
 
-    ROS_INFO("Node reset successful: %s", _namespace.c_str());
+    ROS_INFO("Node reset finished: %s", _namespace.c_str());
 }
 
 void RealSenseNode::getDevice() {
