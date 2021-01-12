@@ -269,11 +269,15 @@ class RealSenseParamManager;
         bool _use_depth_rate_monitor;
         ros::Timer _depth_rate_monitor_timer;
         int _depth_rate_monitor_num_of_new_frames; // Number of depth frames received between depth_rate_monitor_timer callbacks
+        int _depth_rate_monitor_num_of_new_aligned_frames; // Number of aligned depth frames received between depth_rate_monitor_timer callbacks
+        int _depth_rate_monitor_num_of_new_color_frames; // Number of color frames received between depth_rate_monitor_timer callbacks
         int _depth_rate_monitor_initial_cycles_number; // Number of timer cycles after startup we should ignore
         int _depth_rate_monitor_initial_cycles_counter;
         int _depth_rate_monitor_min_frames_number_per_cycle; // Minimal acceptable framerate
         int _depth_rate_monitor_consequent_low_rate_frames_limit; // Number of consequent low rates before the node resets
         int _depth_rate_monitor_consequent_low_rate_frames_counter;
+        int _depth_rate_monitor_consequent_low_rate_aligned_frames_counter;
+        int _depth_rate_monitor_consequent_low_rate_color_frames_counter;
 
         bool _use_fix_set_exposure;
         int _fix_set_exposure_max_tries;

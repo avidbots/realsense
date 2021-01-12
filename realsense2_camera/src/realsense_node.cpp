@@ -380,11 +380,15 @@ void RealSenseNode::getParameters()
 
     _pnh.param("use_depth_rate_monitor", _use_depth_rate_monitor, DEFAULT_USE_DEPTH_RATE_MONITOR);
     _depth_rate_monitor_num_of_new_frames = 0;
+    _depth_rate_monitor_num_of_new_aligned_frames = 0;
+    _depth_rate_monitor_num_of_new_color_frames = 0;
     _pnh.param("depth_rate_monitor_initial_cycles_number", _depth_rate_monitor_initial_cycles_number, DEFAULT_DEPTH_RATE_MONITOR_INITIAL_CYCLES_NUMBER);
     _depth_rate_monitor_initial_cycles_counter = 0;
     _pnh.param("depth_rate_monitor_min_frames_number_per_cycle", _depth_rate_monitor_min_frames_number_per_cycle, DEFAULT_DEPTH_RATE_MONITOR_MIN_FRAMES_NUMBER_PER_CYCLE);
     _pnh.param("depth_rate_monitor_consequent_low_rate_frames_limit", _depth_rate_monitor_consequent_low_rate_frames_limit, DEFAULT_DEPTH_RATE_MONITOR_CONSEQUENT_LOW_RATE_FRAMES_LIMIT);
     _depth_rate_monitor_consequent_low_rate_frames_counter = 0;
+    _depth_rate_monitor_consequent_low_rate_aligned_frames_counter = 0;
+    _depth_rate_monitor_consequent_low_rate_color_frames_counter = 0;
 
     _pnh.param("serial_no", _serial_no, _serial_no);
 
@@ -907,6 +911,14 @@ void RealSenseNode::setupStreams()
                                 }
                             }
 
+                            if (stream_type == RS2_STREAM_COLOR)
+                            {
+                                if (_use_depth_rate_monitor)
+                                {
+                                    _depth_rate_monitor_num_of_new_color_frames++;
+                                }
+                            }
+
                             stream_index_pair sip{stream_type,stream_index};
                             publishFrame(f, t,
                                         sip,
@@ -939,6 +951,10 @@ void RealSenseNode::setupStreams()
                             //}
                             ROS_DEBUG("publishAlignedDepthToOthers(...)");
                             publishAlignedDepthToOthers(depth_frame, frames, t);
+                            if (_use_depth_rate_monitor)
+                            {
+                                _depth_rate_monitor_num_of_new_aligned_frames++;
+                            }
                         }
                     }
                 }
@@ -1690,6 +1706,7 @@ void RealSenseNode::setHealthTimers() {
         if (_depth_rate_monitor_initial_cycles_counter < _depth_rate_monitor_initial_cycles_number) {
             _depth_rate_monitor_initial_cycles_counter++;
         } else {
+            // Check depth
             if (_depth_rate_monitor_num_of_new_frames < _depth_rate_monitor_min_frames_number_per_cycle) {
                 ROS_WARN(
                     "Number of new depth frames is lower than the minimum: %d < %d: %s",
@@ -1709,8 +1726,53 @@ void RealSenseNode::setHealthTimers() {
             } else {
                 _depth_rate_monitor_consequent_low_rate_frames_counter = 0;
             }
+
+            // Check aligned depth
+            if (_depth_rate_monitor_num_of_new_aligned_frames < _depth_rate_monitor_min_frames_number_per_cycle) {
+                ROS_WARN(
+                    "Number of new aligned depth frames is lower than the minimum: %d < %d: %s",
+                    _depth_rate_monitor_num_of_new_aligned_frames,
+                    _depth_rate_monitor_min_frames_number_per_cycle,
+                    _namespace.c_str()
+                );
+                _depth_rate_monitor_consequent_low_rate_aligned_frames_counter++;
+                if (_depth_rate_monitor_consequent_low_rate_aligned_frames_counter > _depth_rate_monitor_consequent_low_rate_frames_limit) {
+                    ROS_WARN(
+                        "Inconsistent aligned depth rate detected: received %d concequent low rates. Resetting the node: %s",
+                        _depth_rate_monitor_consequent_low_rate_aligned_frames_counter,
+                        _namespace.c_str()
+                    );
+                    resetNode();
+                }
+            } else {
+                _depth_rate_monitor_consequent_low_rate_aligned_frames_counter = 0;
+            }
+
+            // Check color
+            if (_depth_rate_monitor_num_of_new_color_frames < _depth_rate_monitor_min_frames_number_per_cycle) {
+                ROS_WARN(
+                    "Number of new color frames is lower than the minimum: %d < %d: %s",
+                    _depth_rate_monitor_num_of_new_color_frames,
+                    _depth_rate_monitor_min_frames_number_per_cycle,
+                    _namespace.c_str()
+                );
+                _depth_rate_monitor_consequent_low_rate_color_frames_counter++;
+                if (_depth_rate_monitor_consequent_low_rate_color_frames_counter > _depth_rate_monitor_consequent_low_rate_frames_limit) {
+                    ROS_WARN(
+                        "Inconsistent color rate detected: received %d concequent low rates. Resetting the node: %s",
+                        _depth_rate_monitor_consequent_low_rate_color_frames_counter,
+                        _namespace.c_str()
+                    );
+                    resetNode();
+                }
+            } else {
+                _depth_rate_monitor_consequent_low_rate_color_frames_counter = 0;
+            }
         }
+
         _depth_rate_monitor_num_of_new_frames = 0;
+        _depth_rate_monitor_num_of_new_aligned_frames = 0;
+        _depth_rate_monitor_num_of_new_color_frames = 0;
     };
     _depth_rate_monitor_timer = _node_handle.createTimer(ros::Duration(1.0), depth_rate_monitor_callback);
   }
