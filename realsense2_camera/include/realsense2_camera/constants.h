@@ -94,6 +94,7 @@ namespace realsense2_camera
     const std::string DEFAULT_ALIGNED_DEPTH_TO_FISHEYE_FRAME_ID = "camera_aligned_depth_to_fisheye_frame";
 
     const bool DEFAULT_USE_FIX_SET_EXPOSURE = true;
+    const bool DEFAULT_AUTO_EXPOSURE_SETTING = true;
     const int DEFAULT_FIX_SET_EXPOSURE_MAX_TRIES = 5;
     const double DEFAULT_FIX_SET_EXPOSURE_MAX_RESET_WAIT = 5.0; // [s]
     const double DEFAULT_FIX_SET_EXPOSURE_MAX_FAIL_WAIT = 1.0; // [s]

@@ -10,7 +10,7 @@
 /**
  * @license Apache 2.0. See LICENSE file in root directory.
  * @copyright Copyright 2020, Avidbots Corp.
- * @file      fix_set_autoexposure.cpp
+ * @file      fix_set_auto_exposure.cpp
  * @brief     Brief description of file.
  * @author    Paul Belanger
  */
@@ -18,7 +18,7 @@
 // most of this code is adapted from the fix_set_autoexposure script in the
 // avidbots robot repo.
 
-#include <realsense2_camera/fix_set_exposure.h>
+#include <realsense2_camera/fix_set_auto_exposure.h>
 #include <ros/console.h>
 #include <boost/interprocess/sync/named_mutex.hpp>
 
@@ -40,7 +40,7 @@ const static double MIN_REACQUIRE_WAIT_TIME = 2.5; //[s]
  * @param device  The device to operate on
  * @return  True if the setting was applied successfully, otherwise false.
  */
-static bool try_set_autoexposure(rs2::device& device)
+static bool try_set_auto_exposure(rs2::device& device, bool exposure)
 {
   const auto option = rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE;
 
@@ -63,7 +63,7 @@ static bool try_set_autoexposure(rs2::device& device)
   try
   {
     const float original_value = stereo_module.get_option(option);
-    const float expected_new_value = (original_value > 0.0f ? 0.0f : 1.0f);
+    const float expected_new_value = (exposure ? 1.0f : 0.0f);
     ROS_DEBUG_STREAM("Set autoexposure " << original_value << " -> " << expected_new_value);
     stereo_module.set_option(option, expected_new_value);
     const float actual_new_value = stereo_module.get_option(option);
@@ -83,16 +83,16 @@ static bool try_set_autoexposure(rs2::device& device)
  * @param fail_wait_duration Amount to wait if the first setting fails.
  * @return True if the setting finally succeeds, otherwise false.
  */
-static bool try_set_autoexposure_twice(rs2::device& device, ros::Duration fail_wait_duration)
+static bool try_set_auto_exposure_twice(rs2::device& device, ros::Duration fail_wait_duration, bool exposure)
 {
-  if(try_set_autoexposure(device))
+  if(try_set_auto_exposure(device, exposure))
   {
     return true;
   }
   else
   {
     fail_wait_duration.sleep();
-    return try_set_autoexposure(device);
+    return try_set_auto_exposure(device, exposure);
   }
 }
 
@@ -145,8 +145,8 @@ static bool reacquire_device(rs2::context& context, const std::string& serial, r
   return false;
 }
 
-bool fixSetExposure(rs2::context& context, rs2::device &device, ros::Duration reset_wait_duration,
-                        int max_resets, ros::Duration fail_wait_duration)
+bool fixSetAutoExposure(rs2::context& context, rs2::device &device, ros::Duration reset_wait_duration,
+                        int max_resets, ros::Duration fail_wait_duration, bool exposure)
 {
   // since the hardware_reset causes the device to re-enumerate on the USB
   // bus, we need to track it by its unique serial number across resets.
@@ -175,7 +175,7 @@ bool fixSetExposure(rs2::context& context, rs2::device &device, ros::Duration re
 
     ROS_INFO("Reacquired! ");
 
-    if(try_set_autoexposure_twice(device, fail_wait_duration))
+    if(try_set_auto_exposure_twice(device, fail_wait_duration, exposure))
     {
       // success!
       return true;

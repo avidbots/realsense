@@ -1,6 +1,6 @@
 ﻿#include <realsense2_camera/realsense_node.h>
 #include <realsense2_camera/param_manager.h>
-#include <realsense2_camera/fix_set_exposure.h>
+#include <realsense2_camera/fix_set_auto_exposure.h>
 #include <boost/interprocess/sync/named_mutex.hpp>
 
 using namespace realsense2_camera;
@@ -209,15 +209,19 @@ void RealSenseNode::getDevice() {
 
 void RealSenseNode::publishTopics()
 {
+    // Haven't been able to figure out what magical power registerDynamicReconfigCb() holds to break auto exposure setting.
+    // The suspicion is that the order of initializing/setting auto exposure and manual exposure values done by this function
+    // may be setting auto exposure to something other than expected.
+    // Thus, have to ensure setupDevice(), which in turn runs fixSetAutoExposure(), runs before this function to restore order in D435s
+    if (_params)
+    {
+      _params->registerDynamicReconfigCb(this);
+    }
     setupDevice();
     setupPublishers();
     setupServices();
     setupStreams();
     publishStaticTransforms();
-    if (_params)
-    {
-      _params->registerDynamicReconfigCb(this);
-    }
     ROS_INFO_STREAM("RealSense Node Is Up!");
 }
 
@@ -350,7 +354,8 @@ void RealSenseNode::getParameters()
 
     _pnh.param("serial_no", _serial_no, _serial_no);
 
-    _pnh.param("use_fix_set_exposure", _use_fix_set_exposure, DEFAULT_USE_FIX_SET_EXPOSURE);
+    _pnh.param("use_fix_set_auto_exposure", _use_fix_set_auto_exposure, DEFAULT_USE_FIX_SET_EXPOSURE);
+    _pnh.param("auto_exposure_setting", _auto_exposure_setting, DEFAULT_AUTO_EXPOSURE_SETTING);
     _pnh.param("fix_set_exposure_max_tries", _fix_set_exposure_max_tries, DEFAULT_FIX_SET_EXPOSURE_MAX_TRIES);
     _pnh.param("fix_set_exposure_max_reset_wait", _fix_set_exposure_max_reset_wait, DEFAULT_FIX_SET_EXPOSURE_MAX_RESET_WAIT);
     _pnh.param("fix_set_exposure_max_fail_wait", _fix_set_exposure_max_fail_wait, DEFAULT_FIX_SET_EXPOSURE_MAX_FAIL_WAIT);
@@ -360,12 +365,13 @@ void RealSenseNode::setupDevice()
 {
     ROS_INFO("setupDevice...");
     try{
-        if(_use_fix_set_exposure)
+        if(_use_fix_set_auto_exposure)
         {
             ROS_INFO("Resetting device to ensure autoexposure can be set correctly...");
-            if(fixSetExposure(_ctx, _dev, ros::Duration(_fix_set_exposure_max_reset_wait),
-                               _fix_set_exposure_max_tries,
-                               ros::Duration(_fix_set_exposure_max_fail_wait)))
+            if(fixSetAutoExposure(_ctx, _dev, ros::Duration(_fix_set_exposure_max_reset_wait),
+                                  _fix_set_exposure_max_tries,
+                                  ros::Duration(_fix_set_exposure_max_fail_wait),
+                                  _auto_exposure_setting))
             {
                 ROS_INFO("Device reset completed successfully!");
             }

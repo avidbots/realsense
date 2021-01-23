@@ -10,14 +10,14 @@
 /**
  * @license Apache 2.0. See LICENSE file in root directory.
  * @copyright Copyright 2020, Avidbots Corp.
- * @file      fix_set_autoexposure.h
+ * @file      fix_set_auto_exposure.h
  * @brief     Header for fix_set_autoexposure.cpp, A utility to automatically
  * hardware-reset the camera until the auto-exposure setting works.
  * @author  Paul Belanger
  */
 
-#ifndef REALSENSE2_CAMERA_FIX_SET_EXPOSURE_H
-#define REALSENSE2_CAMERA_FIX_SET_EXPOSURE_H
+#ifndef REALSENSE2_CAMERA_FIX_SET_AUTO_EXPOSURE_H
+#define REALSENSE2_CAMERA_FIX_SET_AUTO_EXPOSURE_H
 
 #include <librealsense2/rs.hpp>
 #include <ros/duration.h>
@@ -49,7 +49,8 @@ namespace realsense2_camera
  * @note This function always unconditionally performs at least one hardware_reset()
  * of the camera.
  */
-bool fixSetExposure(rs2::context& context, rs2::device& device, ros::Duration reset_wait_duration, int max_resets, ros::Duration fail_wait_duration);
+bool fixSetAutoExposure(rs2::context& context, rs2::device& device, ros::Duration reset_wait_duration, int max_resets,
+                       ros::Duration fail_wait_duration, bool exposure);
 
 } // namespace realsense2_camera
-#endif // REALSENSE2_CAMERA_FIX_SET_EXPOSURE_H
+#endif // REALSENSE2_CAMERA_FIX_SET_AUTO_EXPOSURE_H
