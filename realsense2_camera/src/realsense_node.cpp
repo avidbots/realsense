@@ -1091,7 +1091,12 @@ void RealSenseNode::setupStreams()
             _enable[INFRA2])
         {
             static const char* frame_id = "depth_to_infra2_extrinsics";
-            auto ex = getRsExtrinsics(DEPTH, INFRA2);
+            // DEPTH -> INFRA2 query seems broken with librealsense ver >= 2.36.0
+            // This is a quick fix for now until Intel provides an offical fix
+            auto ex = getRsExtrinsics(INFRA2, DEPTH);
+            ex.translation[0] *= -1;
+            ex.translation[1] *= -1;
+            ex.translation[2] *= -1;
             _depth_to_other_extrinsics[INFRA2] = ex;
             _depth_to_other_extrinsics_publishers[INFRA2].publish(rsExtrinsicsToMsg(ex, frame_id));
         }
