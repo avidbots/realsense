@@ -38,6 +38,7 @@ const static double MIN_REACQUIRE_WAIT_TIME = 2.5; //[s]
 /**
  * @brief Attempt to toggle the autoexposure value of the device.
  * @param device  The device to operate on
+ * @param exposure A flag to enable or disable auto exposure. Enabled if true.
  * @return  True if the setting was applied successfully, otherwise false.
  */
 static bool try_set_auto_exposure(rs2::device& device, bool exposure)
@@ -81,6 +82,7 @@ static bool try_set_auto_exposure(rs2::device& device, bool exposure)
  * @brief Tries to set autoexposure. If it fails, wait the specified duration and try again.
  * @param device device to operate on
  * @param fail_wait_duration Amount to wait if the first setting fails.
+ * @param exposure A flag to enable or disable auto exposure. Enabled if true.
  * @return True if the setting finally succeeds, otherwise false.
  */
 static bool try_set_auto_exposure_twice(rs2::device& device, ros::Duration fail_wait_duration, bool exposure)
@@ -103,7 +105,7 @@ static bool try_set_auto_exposure_twice(rs2::device& device, ros::Duration fail_
  * @param[out] out_device Pointer to the device will be placed here.
  * @param max_wait_duration The maximum amount of time to wait for the device
  * to come online.
- * @return
+ * @return True if succcesful
  */
 static bool reacquire_device(rs2::context& context, const std::string& serial, rs2::device& out_device, ros::Duration max_wait_duration)
 {
@@ -145,6 +147,16 @@ static bool reacquire_device(rs2::context& context, const std::string& serial, r
   return false;
 }
 
+/**
+ * @brief Attempt to fix auto exposure setting by reset hardware and checking the actual configuration on devices.
+ * @param context The context used to query devices.
+ * @param serial The serial of the device to find.
+ * @param reset_wait_duration Time to wait after reset for the device to come back online.
+ * @param max_resets The maximum number of times to try resetting a device.
+ * @param fail_wait_duration Time to wait before another attempt to try fixing auto exposure setting.
+ * @param exposure Auto exposure setting value to be set on the device. Enabled if true.
+ * @return True if succcesful.
+ */
 bool fixSetAutoExposure(rs2::context& context, rs2::device &device, ros::Duration reset_wait_duration,
                         int max_resets, ros::Duration fail_wait_duration, bool exposure)
 {

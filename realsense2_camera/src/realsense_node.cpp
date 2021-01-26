@@ -212,7 +212,7 @@ void RealSenseNode::publishTopics()
     // Haven't been able to figure out what magical power registerDynamicReconfigCb() holds to break auto exposure setting.
     // The suspicion is that the order of initializing/setting auto exposure and manual exposure values done by this function
     // may be setting auto exposure to something other than expected.
-    // Thus, have to ensure setupDevice(), which in turn runs fixSetAutoExposure(), runs before this function to restore order in D435s
+    // Thus, have to ensure setupDevice(), which in turn runs fixSetAutoExposure(), runs after this function to restore order in D435s
     if (_params)
     {
       _params->registerDynamicReconfigCb(this);
