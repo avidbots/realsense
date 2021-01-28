@@ -264,7 +264,8 @@ class RealSenseParamManager;
         ros::Duration depth_callback_timeout_;
         std::unique_ptr<RealSenseParamManagerBase> _params;
 
-        bool _use_fix_set_exposure;
+        bool _use_fix_set_auto_exposure;
+        bool _auto_exposure_setting;
         int _fix_set_exposure_max_tries;
         double _fix_set_exposure_max_reset_wait; // [s]
         double _fix_set_exposure_max_fail_wait; // [s]
