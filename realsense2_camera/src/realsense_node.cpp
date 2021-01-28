@@ -1103,6 +1103,17 @@ void RealSenseNode::setupStreams()
             ex.translation[0] *= -1;
             ex.translation[1] *= -1;
             ex.translation[2] *= -1;
+
+            // Invert rotation matrix by transposing
+            // According to Intel's documentation rotation of struct rs2_extrinsics is a column-major matrix
+            // so columns become rows like below:
+            // 0 3 6     0 1 2
+            // 1 4 7  -> 3 4 5
+            // 2 5 8     6 7 8
+            std::swap(ex.rotation[1], ex.rotation[3]);
+            std::swap(ex.rotation[2], ex.rotation[6]);
+            std::swap(ex.rotation[5], ex.rotation[7]);
+
             _depth_to_other_extrinsics[INFRA2] = ex;
             _depth_to_other_extrinsics_publishers[INFRA2].publish(rsExtrinsicsToMsg(ex, frame_id));
         }
