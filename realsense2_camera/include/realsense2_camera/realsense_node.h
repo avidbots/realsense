@@ -152,7 +152,7 @@ class RealSenseParamManager;
         static std::string getNamespaceStr();
         void getParameters();
         bool enableStreams(std_srvs::SetBool::Request  &req, std_srvs::SetBool::Response &res);
-        bool JsonConfigCallback(JsonConfig::RequestType &request, realsense2_camera::JsonConfig::ResponseType &response);
+        bool JsonConfigCallback(JsonConfig::RequestType &request, JsonConfig::ResponseType &response);
         void setupDevice();
         void setupPublishers();
         void setupServices();

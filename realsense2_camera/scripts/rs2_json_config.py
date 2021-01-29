@@ -63,7 +63,9 @@ if(__name__ == "__main__"):
         print(result)
 
     else:
-        print("usage: {} <camera ns> [new json config string] ")
-        sys.exit(1);
+        print("Usage:")
+        print("{} <camera ns> to print all available json config parameters".format("rosrun realsense2_camera rs2_json_config.py"))
+        print("{} <camera ns> [new json config string] to change specific configs ".format("rosrun realsense2_camera rs2_json_config.py"))
+        sys.exit(1)
 
 

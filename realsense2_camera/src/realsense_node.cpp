@@ -269,7 +269,7 @@ bool RealSenseNode::enableStreams(std_srvs::SetBool::Request& req, std_srvs::Set
 bool RealSenseNode::JsonConfigCallback(JsonConfig::RequestType &request, JsonConfig::ResponseType &response)
 {
     // obviously this only works if the device supports serialilzation in the first place...
-    if(not _dev.is<rs2::serializable_device>())
+    if(!_dev.is<rs2::serializable_device>())
     {
         ROS_ERROR("json_config service called but we are not a serializable device! ");
         return false;
