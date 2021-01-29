@@ -25,23 +25,13 @@
 namespace realsense2_camera
 {
 
-
-
-// through experimentation, it takes the D435 sensor about 2 seconds to
-// finish its hardware reset.
-// unfortunately there isn't a way to know for sure that a device has finished resetting.
-// if we wait for less than this time, then we'll end up picking up the original
-// sensor before it finishes disconnecting from the USB bus, leading to all sorts of
-// issues down the line when we try to pull frames.
-const static double MIN_REACQUIRE_WAIT_TIME = 2.5; //[s]
-
 /**
  * @brief Attempt to toggle the autoexposure value of the device.
  * @param device  The device to operate on
  * @param exposure A flag to enable or disable auto exposure. Enabled if true.
  * @return  True if the setting was applied successfully, otherwise false.
  */
-static bool try_set_auto_exposure(rs2::device& device, bool exposure)
+bool try_set_auto_exposure(rs2::device& device, bool exposure)
 {
   const auto option = rs2_option::RS2_OPTION_ENABLE_AUTO_EXPOSURE;
 
@@ -85,7 +75,7 @@ static bool try_set_auto_exposure(rs2::device& device, bool exposure)
  * @param exposure A flag to enable or disable auto exposure. Enabled if true.
  * @return True if the setting finally succeeds, otherwise false.
  */
-static bool try_set_auto_exposure_twice(rs2::device& device, ros::Duration fail_wait_duration, bool exposure)
+bool try_set_auto_exposure_twice(rs2::device& device, ros::Duration fail_wait_duration, bool exposure)
 {
   if(try_set_auto_exposure(device, exposure))
   {
@@ -107,7 +97,7 @@ static bool try_set_auto_exposure_twice(rs2::device& device, ros::Duration fail_
  * to come online.
  * @return True if succcesful
  */
-static bool reacquire_device(rs2::context& context, const std::string& serial, rs2::device& out_device, ros::Duration max_wait_duration)
+bool reacquire_device(rs2::context& context, const std::string& serial, rs2::device& out_device, ros::Duration max_wait_duration)
 {
   ros::Duration amount_waited_so_far(0.0);
 
@@ -154,7 +144,7 @@ static bool reacquire_device(rs2::context& context, const std::string& serial, r
  * @param reset_wait_duration Time to wait after reset for the device to come back online.
  * @param max_resets The maximum number of times to try resetting a device.
  * @param fail_wait_duration Time to wait before another attempt to try fixing auto exposure setting.
- * @param exposure Auto exposure setting value to be set on the device. Enabled if true.
+ * @param Auto exposure setting value to be set on the device. Enabled if true.
  * @return True if succcesful.
  */
 bool fixSetAutoExposure(rs2::context& context, rs2::device &device, ros::Duration reset_wait_duration,

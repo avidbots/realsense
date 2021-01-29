@@ -25,6 +25,42 @@
 namespace realsense2_camera
 {
 
+// through experimentation, it takes the D435 sensor about 2 seconds to
+// finish its hardware reset.
+// unfortunately there isn't a way to know for sure that a device has finished resetting.
+// if we wait for less than this time, then we'll end up picking up the original
+// sensor before it finishes disconnecting from the USB bus, leading to all sorts of
+// issues down the line when we try to pull frames.
+const static double MIN_REACQUIRE_WAIT_TIME = 2.5; //[s]
+
+/**
+ * @brief Attempt to toggle the autoexposure value of the device.
+ * @param device  The device to operate on
+ * @param exposure A flag to enable or disable auto exposure. Enabled if true.
+ * @return  True if the setting was applied successfully, otherwise false.
+ */
+static bool try_set_auto_exposure(rs2::device& device, bool exposure);
+
+/**
+ * @brief Tries to set autoexposure. If it fails, wait the specified duration and try again.
+ * @param device device to operate on
+ * @param fail_wait_duration Amount to wait if the first setting fails.
+ * @param exposure A flag to enable or disable auto exposure. Enabled if true.
+ * @return True if the setting finally succeeds, otherwise false.
+ */
+static bool try_set_auto_exposure_twice(rs2::device& device, ros::Duration fail_wait_duration, bool exposure);
+
+/**
+ * @brief Attempt to reacquire a device with a given serial number.
+ * @param context The context used to query devices.
+ * @param serial The serial of the device to find.
+ * @param[out] out_device Pointer to the device will be placed here.
+ * @param max_wait_duration The maximum amount of time to wait for the device
+ * to come online.
+ * @return True if succcesful
+ */
+static bool reacquire_device(rs2::context& context, const std::string& serial, rs2::device& out_device, ros::Duration max_wait_duration);
+
 /**
  * @brief Fix the autoexposure setting for the given rs2 device.
  *
