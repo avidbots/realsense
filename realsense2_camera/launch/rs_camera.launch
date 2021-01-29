@@ -40,8 +40,8 @@
   <arg name="use_fix_set_auto_exposure" default="false"/>
   <arg name="auto_exposure_setting" default="true"/>
   <arg name="fix_set_exposure_max_tries" default="5"/>
-  <arg name="fix_set_exposure_max_reset_wait" default="5"/>
-  <arg name="fix_set_exposure_max_fail_wait" default="1"/>
+  <arg name="fix_set_exposure_max_reset_wait" default="5.0"/>
+  <arg name="fix_set_exposure_max_fail_wait" default="1.0"/>
 
   <group ns="$(arg camera)">
     <include file="$(find realsense2_camera)/launch/includes/nodelet.launch.xml">
