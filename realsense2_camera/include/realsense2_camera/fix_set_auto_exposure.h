@@ -79,6 +79,7 @@ static bool reacquire_device(rs2::context& context, const std::string& serial, r
  * @param fail_wait_duration If setting of the ae param fails, we wait this amount
  * of time before trying a second time, and then fall back to the hardware reset
  * if a second attempt fails.
+ * @param exposure Auto exposure setting value to be set on the device. Enabled if true.
  * @return True if the device was successfully reset. False if the max number of
  * resets has been attempted but the device still isn't responding.
  *

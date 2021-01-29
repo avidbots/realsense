@@ -192,11 +192,6 @@ void RealSenseNode::getDevice() {
             return;
         }
 
-        // make sure the hardware is initialized correctly by
-
-
-
-
         _ctx.set_devices_changed_callback([this](rs2::event_information& info)
         {
             if (info.was_removed(_dev))
