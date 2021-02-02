@@ -3,6 +3,7 @@
 #include <realsense2_camera/JsonConfigRequest.h>
 #include <realsense2_camera/JsonConfigResponse.h>
 #include <librealsense2/hpp/rs_serializable_device.hpp>
+#include <realsense2_camera/fix_set_auto_exposure.h>
 #include <boost/interprocess/sync/named_mutex.hpp>
 
 using namespace realsense2_camera;
@@ -206,15 +207,19 @@ void RealSenseNode::getDevice() {
 
 void RealSenseNode::publishTopics()
 {
+    // Haven't been able to figure out what magical power registerDynamicReconfigCb() holds to break auto exposure setting.
+    // The suspicion is that the order of initializing/setting auto exposure and manual exposure values done by this function
+    // may be setting auto exposure to something other than expected.
+    // Thus, have to ensure setupDevice(), which in turn runs fixSetAutoExposure(), runs after this function to restore order in D435s
+    if (_params)
+    {
+      _params->registerDynamicReconfigCb(this);
+    }
     setupDevice();
     setupPublishers();
     setupServices();
     setupStreams();
     publishStaticTransforms();
-    if (_params)
-    {
-      _params->registerDynamicReconfigCb(this);
-    }
     ROS_INFO_STREAM("RealSense Node Is Up!");
 }
 
@@ -373,12 +378,39 @@ void RealSenseNode::getParameters()
     depth_callback_timeout_ = ros::Duration(depth_callback_timeout);
 
     _pnh.param("serial_no", _serial_no, _serial_no);
+
+    _pnh.param("use_fix_set_auto_exposure", _use_fix_set_auto_exposure, DEFAULT_USE_FIX_SET_EXPOSURE);
+    _pnh.param("auto_exposure_setting", _auto_exposure_setting, DEFAULT_AUTO_EXPOSURE_SETTING);
+    _pnh.param("fix_set_exposure_max_tries", _fix_set_exposure_max_tries, DEFAULT_FIX_SET_EXPOSURE_MAX_TRIES);
+    _pnh.param("fix_set_exposure_max_reset_wait", _fix_set_exposure_max_reset_wait, DEFAULT_FIX_SET_EXPOSURE_MAX_RESET_WAIT);
+    _pnh.param("fix_set_exposure_max_fail_wait", _fix_set_exposure_max_fail_wait, DEFAULT_FIX_SET_EXPOSURE_MAX_FAIL_WAIT);
 }
 
 void RealSenseNode::setupDevice()
 {
     ROS_INFO("setupDevice...");
     try{
+        if(_use_fix_set_auto_exposure)
+        {
+            ROS_INFO("Resetting device to ensure autoexposure can be set correctly...");
+            if(fixSetAutoExposure(_ctx, _dev, ros::Duration(_fix_set_exposure_max_reset_wait),
+                                  _fix_set_exposure_max_tries,
+                                  ros::Duration(_fix_set_exposure_max_fail_wait),
+                                  _auto_exposure_setting))
+            {
+                ROS_INFO("Device reset completed successfully!");
+            }
+            else
+            {
+              throw std::runtime_error("Device reset failed!");
+            }
+        }
+        else
+        {
+          ROS_INFO("NOT using fix_set_exposure functionality");
+        }
+
+
         if (!_json_file_path.empty())
         {
             if (_dev.is<rs400::advanced_mode>())
@@ -1091,7 +1123,23 @@ void RealSenseNode::setupStreams()
             _enable[INFRA2])
         {
             static const char* frame_id = "depth_to_infra2_extrinsics";
-            auto ex = getRsExtrinsics(DEPTH, INFRA2);
+            // DEPTH -> INFRA2 query seems broken with librealsense ver >= 2.36.0
+            // This is a quick fix for now until Intel provides an offical fix
+            auto ex = getRsExtrinsics(INFRA2, DEPTH);
+            ex.translation[0] *= -1;
+            ex.translation[1] *= -1;
+            ex.translation[2] *= -1;
+
+            // Invert rotation matrix by transposing
+            // According to Intel's documentation rotation of struct rs2_extrinsics is a column-major matrix
+            // so columns become rows like below:
+            // 0 3 6     0 1 2
+            // 1 4 7  -> 3 4 5
+            // 2 5 8     6 7 8
+            std::swap(ex.rotation[1], ex.rotation[3]);
+            std::swap(ex.rotation[2], ex.rotation[6]);
+            std::swap(ex.rotation[5], ex.rotation[7]);
+
             _depth_to_other_extrinsics[INFRA2] = ex;
             _depth_to_other_extrinsics_publishers[INFRA2].publish(rsExtrinsicsToMsg(ex, frame_id));
         }
