@@ -52,6 +52,11 @@ add_message_files(
     Extrinsics.msg
     )
 
+add_service_files(
+    FILES
+    JsonConfig.srv
+)
+
 generate_messages(
     DEPENDENCIES
     sensor_msgs
@@ -115,6 +120,10 @@ install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
 )
 
+# Install scripts
+install(DIRECTORY scripts/
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/scripts
+    )
 # Install launch files
 install(DIRECTORY launch/
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch

@@ -1,5 +1,8 @@
-﻿#include <realsense2_camera/realsense_node.h>
+#include <realsense2_camera/realsense_node.h>
 #include <realsense2_camera/param_manager.h>
+#include <realsense2_camera/JsonConfigRequest.h>
+#include <realsense2_camera/JsonConfigResponse.h>
+#include <librealsense2/hpp/rs_serializable_device.hpp>
 #include <realsense2_camera/fix_set_auto_exposure.h>
 #include <boost/interprocess/sync/named_mutex.hpp>
 
@@ -268,6 +271,33 @@ bool RealSenseNode::enableStreams(std_srvs::SetBool::Request& req, std_srvs::Set
     return true;
 }
 
+bool RealSenseNode::JsonConfigCallback(JsonConfig::RequestType &request, JsonConfig::ResponseType &response)
+{
+    // obviously this only works if the device supports serialilzation in the first place...
+    if(!_dev.is<rs2::serializable_device>())
+    {
+        ROS_ERROR("json_config service called but we are not a serializable device! ");
+        return false;
+    }
+
+    // the internal realsense parser fails on an empty string, so we give it an empty object to parse.
+    if(request.json_string.empty()) request.json_string = "{}";
+
+    try
+    {
+        auto ser_dev = _dev.as<rs2::serializable_device>();
+
+        ser_dev.load_json(request.json_string);
+        response.new_config = ser_dev.serialize_json();
+        return true;
+    }
+    catch (const std::exception& ex)
+    {
+        ROS_ERROR_STREAM("Error on JsonConfigCallback: " << ex.what());
+        return false;
+    }
+}
+
 void RealSenseNode::getParameters()
 {
     ROS_INFO("getParameters...");
@@ -520,6 +550,7 @@ void RealSenseNode::setupServices()
 {
   ROS_INFO("setupServices...");
   _enable_streams_service = _pnh.advertiseService("enable_streams", &RealSenseNode::enableStreams, this);
+  _json_config_service = _pnh.advertiseService("json_config", &RealSenseNode::JsonConfigCallback, this);
 }
 
 void RealSenseNode::setupPublishers()
