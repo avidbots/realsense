@@ -37,6 +37,12 @@
   <arg name="enable_ros_time"     default="false"/>
   <arg name="align_depth"         default="false"/>
 
+  <arg name="use_fix_set_auto_exposure" default="false"/>
+  <arg name="auto_exposure_setting" default="true"/>
+  <arg name="fix_set_exposure_max_tries" default="5"/>
+  <arg name="fix_set_exposure_max_reset_wait" default="5.0"/>
+  <arg name="fix_set_exposure_max_fail_wait" default="1.0"/>
+
   <group ns="$(arg camera)">
     <include file="$(find realsense2_camera)/launch/includes/nodelet.launch.xml">
       <arg name="serial_no"                value="$(arg serial_no)"/>
@@ -75,6 +81,12 @@
       <arg name="gyro_fps"                 value="$(arg gyro_fps)"/>
       <arg name="accel_fps"                value="$(arg accel_fps)"/>
       <arg name="enable_imu"               value="$(arg enable_imu)"/>
+
+      <arg name="use_fix_set_auto_exposure" value="$(arg use_fix_set_auto_exposure)"/>
+      <arg name="auto_exposure_setting"     value="$(arg auto_exposure_setting)"/>
+      <arg name="fix_set_exposure_max_tries" value="$(arg fix_set_exposure_max_tries)"/>
+      <arg name="fix_set_exposure_max_reset_wait" value="$(arg fix_set_exposure_max_reset_wait)"/>
+      <arg name="fix_set_exposure_max_fail_wait" value="$(arg fix_set_exposure_max_fail_wait)"/>
     </include>
   </group>
 </launch>

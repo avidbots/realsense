@@ -86,6 +86,7 @@ add_library(${PROJECT_NAME}
     src/realsense_nodelet.cpp
     src/realsense_node.cpp
     src/param_manager.cpp
+    src/fix_set_auto_exposure.cpp
     )
 
 add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_generate_messages_cpp)
