@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(realsense2_camera)
 
+set (CMAKE_CXX_STANDARD 14)
+
 option(BUILD_WITH_OPENMP "Use OpenMP" OFF)
 option(SET_USER_BREAK_AT_STARTUP "Set user wait point in startup (for debug)" OFF)
 
@@ -16,6 +18,8 @@ find_package(catkin REQUIRED COMPONENTS
     dynamic_reconfigure
     diagnostic_updater
     )
+
+find_package( Boost REQUIRED)
 
 if(BUILD_WITH_OPENMP)
     find_package(OpenMP)
@@ -62,7 +66,8 @@ include_directories(
     include
     ${catkin_INCLUDE_DIRS}
     ${realsense_INCLUDE_DIR}
-    )
+    ${Boost_INCLUDE_DIRS}
+)
 
 # Generate dynamic reconfigure options from .cfg files
 generate_dynamic_reconfigure_options(

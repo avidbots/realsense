@@ -37,8 +37,118 @@
 #include <diagnostic_updater/diagnostic_updater.h>
 #include <diagnostic_updater/update_functions.h>
 
+#include <boost/accumulators/accumulators.hpp>
+#include <boost/accumulators/statistics.hpp>
+#include <iostream>
+
+
 namespace realsense2_camera
 {
+
+class DepthSyncer {
+
+    struct SyncerImplementation {
+        SyncerImplementation() {
+            bundler = std::make_unique<rs2::processing_block>([&](rs2::frame f, rs2::frame_source& src) {
+                    bundle.push_back(f);
+                    if (bundle.size() == 2)
+            {
+                    auto fs = src.allocate_composite_frame(bundle);
+                    src.frame_ready(fs);
+                    bundle.clear();
+        }
+        });
+        }
+
+        void Start(std::function<void(rs2::frame)> on_frame)
+        {
+            on_frame_callbak = on_frame;
+            bundler->start(q);
+        }
+
+        void Invoke(rs2::frame f)
+        {
+            const auto stream_type = f.get_profile().stream_type();
+            if (stream_type == RS2_STREAM_DEPTH) {
+                depth.push_back(f);
+                got_depth = true;
+            }
+            if (stream_type == RS2_STREAM_COLOR) {
+                color.push_back(f);
+                got_color = true;
+            }
+
+            if (got_color && got_depth){
+                const auto& d = depth.front();
+                auto best = color.back();
+                auto best_diff = std::abs(d.get_timestamp() - color.back().get_timestamp());
+                for (const auto& c : color) {
+                    const auto diff = std::abs(d.get_timestamp() - c.get_timestamp());
+                    if (diff < best_diff) {
+                        best_diff = diff;
+                        best = c;
+                    }
+                }
+
+                if (best_diff < 20 || color.back().get_timestamp() > depth.back().get_timestamp()) {
+                    acc(best_diff);
+
+                    ROS_INFO_STREAM("[Sync Error: " << best_diff << "] [Average Sync Error: " << boost::accumulators::mean(acc) <<
+                                    "] Variance of Sync Error: " << boost::accumulators::variance(acc) << "]");
+                    ROS_INFO_STREAM("Depth queue size " << depth.size());
+
+                    if (depth.size() > 1) {
+                      throw std::runtime_error("Depth queue size should not go over 1");
+                    }
+
+                    bundler->invoke(d);
+                    bundler->invoke(best);
+
+                    depth.clear();
+                    color.clear();
+                    got_color = false;
+                    got_depth = false;
+                    rs2::frameset fs = q.wait_for_frame();
+                    on_frame_callbak(fs);
+                }
+            }
+        }
+
+        std::vector<rs2::frame> bundle;
+        std::unique_ptr<rs2::processing_block> bundler;
+        std::function<void(rs2::frame)> on_frame_callbak;
+        rs2::frame_queue q;
+        std::deque<rs2::frame> depth;
+        std::deque<rs2::frame> color;
+        bool got_depth = false;
+        bool got_color = false;
+
+        boost::accumulators::accumulator_set<double, boost::accumulators::features<boost::accumulators::tag::mean, boost::accumulators::tag::variance>> acc;
+    };
+
+public:
+    DepthSyncer(){
+        _impl = std::make_shared<SyncerImplementation>();
+    }
+
+    DepthSyncer(const DepthSyncer& other)
+    {
+        _impl = other._impl;
+    }
+
+    void start(std::function<void(rs2::frame)> on_frame)
+    {
+        _impl->Start(on_frame);
+    }
+
+    void operator()(rs2::frame f)
+    {
+        _impl->Invoke(f);
+    }
+private:
+    std::shared_ptr<SyncerImplementation> _impl;
+
+};
 
 class RealSenseParamManagerBase;
 template<uint16_t Model>
@@ -226,7 +336,7 @@ class RealSenseParamManager;
         bool _sync_frames;
         bool _pointcloud;
         bool _use_ros_time;
-        rs2::asynchronous_syncer _syncer;
+        DepthSyncer _syncer;
 
         std::map<stream_index_pair, cv::Mat> _depth_aligned_image;
         std::map<stream_index_pair, std::string> _depth_aligned_encoding;
